@@ -1,0 +1,38 @@
+[build-system]
+build-backend = "flit_core.buildapi"
+requires = ["flit_core >=3.8.0,<4"]
+
+[project]
+name = "PrithviWxC"
+authors = [
+    {name = "Will Torjak", email = "w.trojak@ibm.com"},
+    {name = "Johannes Schmude"},
+    {name = "Daniel Salles Civitarese"},
+    {name = "Sujit Roy"},
+    {name = "Shraddha Singh"},
+    {name = "Johannes Jakubik"},
+    {name = "Muthukumaran Ramasubramanian"},
+    {name = "Iksha Gurung"},
+    {name = "Julian Kuehnert"},
+]
+classifiers = [
+]
+requires-python = ">=3.11"
+dynamic = ["version", "description"]
+dependencies = [
+    "h5py >= 3.10.0",
+    "matplotlib >= 3.8.3",
+    "numpy >= 1.26",
+    "torch >= 2.2.1",
+]
+
+[tool.ruff]
+line-length = 79
+select = [
+    "C",
+    "F",
+    "E",
+    "W",
+    "B",
+    "I",
+]
