@@ -300,6 +300,7 @@ class SampleSpec:
         return (
             f"Issue time: {self.inputs[1].strftime(iso_8601)}\n"
             f"Lead time: {self.lead_time} hours ahead\n"
+            f"Input delta: {self.input_time} hours\n"
             f"Target time: {self.target.strftime(iso_8601)}"
         )
 
@@ -796,7 +797,7 @@ class Merra2Dataset(Dataset):
 
         if self._require_clim:
             sci = spec.climatology_info
-            ci = set(sci) if isinstance(sci, list) else set(sci)
+            ci = set(sci) if isinstance(sci, list) else set([sci])  # noqa: C405
             valid &= ci.issubset(self.valid_climate_timestamps)
 
         return valid
