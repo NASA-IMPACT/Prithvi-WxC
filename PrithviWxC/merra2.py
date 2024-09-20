@@ -267,7 +267,7 @@ class SampleSpec:
             )
 
         self.inputs = inputs
-        self.input_time = (inputs[1] - inputs[0]).seconds / 3600
+        self.input_time = (inputs[1] - inputs[0]).total_seconds() / 3600
         self.lead_time = lead_time
         self.target = target
 
@@ -318,6 +318,7 @@ class SampleSpec:
         Returns:
             SampleSpec object.
         """
+        assert dt > 0, "dt should be possitive"
         lt = pd.to_timedelta(lead_time, unit="h")
         dt = pd.to_timedelta(dt, unit="h")
 
@@ -488,7 +489,7 @@ class Merra2Dataset(Dataset):
             pd.to_datetime(time_range[1]),
         )
         self.lead_times = lead_times
-        self.input_times = [-i for i in input_times]
+        self.input_times = input_times
         self._roll_longitudes = list(range(roll_longitudes + 1))
 
         self._uvars = vertical_vars or self.valid_vertical_vars
@@ -816,7 +817,7 @@ class Merra2Dataset(Dataset):
         for timestamp in sorted(self.valid_timestamps):
             timestamp_samples = []
             for it, lt in dts:
-                spec = SampleSpec.get(timestamp, it, lt)
+                spec = SampleSpec.get(timestamp, -it, lt)
 
                 if self._data_available(spec):
                     timestamp_samples.append((timestamp, it, lt))
