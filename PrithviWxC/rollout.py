@@ -12,7 +12,6 @@ def rollout_iter(
 
     xlast = batch["x"][:, 1]
     batch["lead_time"] = batch["lead_time"][..., 0]
-    batch["ys"] = batch["y"]
 
     # Save the masking ratio to be restored later
     mask_ratio_tmp = model.mask_ratio_inputs

@@ -216,7 +216,7 @@ class RolloutSpec(SampleSpec):
         )
 
     @classmethod
-    def get_spec(cls, timestamp: pd.Timestamp, lead_time: int, nsteps: int):
+    def get(cls, timestamp: pd.Timestamp, lead_time: int, nsteps: int):
         """
         Given a timestamp and lead time, generates a RolloutSpec object
           describing the sample further.
@@ -265,6 +265,9 @@ class Merra2RolloutDataset(Merra2Dataset):
 
     def __init__(
         self,
+        time_range: tuple[str | pd.Timestamp, str | pd.Timestamp],
+        input_time: int | float | pd.Timedelta,
+        lead_time: int | float,
         data_path_surface: str | Path,
         data_path_vertical: str | Path,
         climatology_path_surface: str | Path | None,
@@ -273,22 +276,22 @@ class Merra2RolloutDataset(Merra2Dataset):
         static_surface_vars: list[str],
         vertical_vars: list[str],
         levels: list[float],
-        time_range: tuple[str | pd.Timestamp, str | pd.Timestamp],
-        lead_times: list[int],
         roll_longitudes: int = 0,
         positional_encoding: str = "absolute",
     ):
-        assert len(lead_times) == 1, "Single lead time for autoregressive data"
-        self._target_lead = lead_times[0]
+        self._target_lead = lead_time
 
-        if isinstance(lead_times[0], int) or isinstance(lead_times[0], float):
-            self.timedelta_input = pd.to_timedelta(lead_times, unit="h")
+        if isinstance(input_time, int) or isinstance(input_time, float):
+            self.timedelta_input = pd.to_timedelta(-input_time, unit="h")
         else:
-            self.timedelta_input = lead_times
+            self.timedelta_input = -input_time
 
         lead_times = [self.timedelta_input / pd.to_timedelta(1, unit="h")]
 
         super().__init__(
+            time_range,
+            lead_times,
+            [input_time],
             data_path_surface,
             data_path_vertical,
             climatology_path_surface,
@@ -297,9 +300,6 @@ class Merra2RolloutDataset(Merra2Dataset):
             static_surface_vars,
             vertical_vars,
             levels,
-            time_range,
-            [-self.timedelta_input],
-            lead_times,
             roll_longitudes,
             positional_encoding,
         )
@@ -321,15 +321,16 @@ class Merra2RolloutDataset(Merra2Dataset):
             List of tuples (timestamp, input time, lead time).
         """
         valid_samples = []
-        dts = [(it, lt) for it in self.input_times for lt in self.lead_times]
 
         for timestamp in sorted(self.valid_timestamps):
             timestamp_samples = []
-            for it, lt in dts:
-                spec = RolloutSpec.get(timestamp, it, lt)
+            for lt in self.lead_times:
+                spec = RolloutSpec.get(timestamp, lt, self.nsteps)
 
                 if self._data_available(spec):
-                    timestamp_samples.append((timestamp, it, lt))
+                    timestamp_samples.append(
+                        (timestamp, self.input_times[0], lt, self.nsteps)
+                    )
 
             if timestamp_samples:
                 valid_samples.append(timestamp_samples)
@@ -401,7 +402,8 @@ class Merra2RolloutDataset(Merra2Dataset):
         stat = {}
         for data_files, times in stat_file_map.items():
             for time in times:
-                stat[time] = self._read_static_data(data_files[0], time)
+                hod, doy = time.hour, time.dayofyear
+                stat[time] = self._read_static_data(data_files[0], hod, doy)
 
         # Combine times
         sample_data = {}
@@ -416,10 +418,10 @@ class Merra2RolloutDataset(Merra2Dataset):
         sample_data["sur_vals"] = input_sur
 
         target_sur = np.stack([data[t]["surf"] for t in spec.targets], axis=1)
-        sample_data["ulv_tars"] = target_sur
+        sample_data["sur_tars"] = target_sur
 
         # Load the static data
-        static = np.stack([stat[t] for t in spec.targets], axis=0)
+        static = np.stack([stat[t] for t in spec.stat_times], axis=0)
         sample_data["sur_static"] = static
 
         # If required load the climate data
@@ -473,7 +475,7 @@ class Merra2RolloutDataset(Merra2Dataset):
               'ulv_vals', 'ulv_tars', 'sur_climate', 'ulv_climate',
               'lead_time', 'input_time'
         """
-        rollout_spec = RolloutSpec.get_spec(
+        rollout_spec = RolloutSpec.get(
             timestamp, self.lead_times[0], self.nsteps
         )
         sample_data = self.get_data_from_rollout_spec(rollout_spec)
