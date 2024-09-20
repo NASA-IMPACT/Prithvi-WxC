@@ -487,7 +487,7 @@ class Merra2Dataset(Dataset):
             pd.to_datetime(time_range[1]),
         )
         self.lead_times = lead_times
-        self.input_times = input_times
+        self.input_times = [-i for i in input_times]
         self._roll_longitudes = list(range(roll_longitudes + 1))
 
         self._uvars = vertical_vars or self.valid_vertical_vars

@@ -1235,9 +1235,7 @@ class PrithviWxC(nn.Module):
         if self.positional_encoding == "fourier":
             static_embedded += x_static_pos
 
-        print(f"{x_embedded.shape=}")
         x_embedded = self.to_patching(x_embedded)
-        print(f"{x_embedded.shape=}")
         static_embedded = self.to_patching(static_embedded)
 
         time_encoding = self.time_encoding(
@@ -1253,7 +1251,6 @@ class PrithviWxC(nn.Module):
         indices_masked = indices_masked.to(device=tokens.device)
         indices_unmasked = indices_unmasked.to(device=tokens.device)
         maskdim: int = indices_masked.ndim
-        print(f"{tokens.shape=}")
 
         # Unmasking
         unmask_view = (*indices_unmasked.shape, *[1] * (tokens.ndim - maskdim))
