@@ -53,7 +53,6 @@ def preproc(batch: list[dict], padding: dict[tuple[int]]) -> dict[str, Tensor]:
     b0 = batch[0]
     nbatch = len(batch)
     data_keys = set(b0.keys())
-    cur_device = b0["ulv_vals"].device
 
     essential_keys = {
         "sur_static",
@@ -79,16 +78,16 @@ def preproc(batch: list[dict], padding: dict[tuple[int]]) -> dict[str, Tensor]:
         raise ValueError("Unexpected keys in batch.")
 
     # Bring all tensors from the batch into a single tensor
-    upl_x = torch.empty((nbatch, *b0["ulv_vals"].shape), device=cur_device)
-    upl_y = torch.empty((nbatch, *b0["ulv_tars"].shape), device=cur_device)
+    upl_x = torch.empty((nbatch, *b0["ulv_vals"].shape))
+    upl_y = torch.empty((nbatch, *b0["ulv_tars"].shape))
 
-    sur_x = torch.empty((nbatch, *b0["sur_vals"].shape), device=cur_device)
-    sur_y = torch.empty((nbatch, *b0["sur_tars"].shape), device=cur_device)
+    sur_x = torch.empty((nbatch, *b0["sur_vals"].shape))
+    sur_y = torch.empty((nbatch, *b0["sur_tars"].shape))
 
-    sur_sta = torch.empty((nbatch, *b0["sur_static"].shape), device=cur_device)
+    sur_sta = torch.empty((nbatch, *b0["sur_static"].shape))
 
-    lead_time = torch.empty((nbatch,), dtype=torch.float32, device=cur_device)
-    input_time = torch.empty((nbatch,), dtype=torch.float32, device=cur_device)
+    lead_time = torch.empty((nbatch,), dtype=torch.float32)
+    input_time = torch.empty((nbatch,), dtype=torch.float32)
 
     for i, rec in enumerate(batch):
         sur_x[i] = rec["sur_vals"]
@@ -146,8 +145,8 @@ def preproc(batch: list[dict], padding: dict[tuple[int]]) -> dict[str, Tensor]:
     )
 
     if climate_keys.issubset(data_keys):
-        sur_climate = torch.empty((nbatch, *b0["sur_climate"].shape), device=cur_device)
-        ulv_climate = torch.empty((nbatch, *b0["ulv_climate"].shape), device=cur_device)
+        sur_climate = torch.empty((nbatch, *b0["sur_climate"].shape))
+        ulv_climate = torch.empty((nbatch, *b0["ulv_climate"].shape))
         for i, rec in enumerate(batch):
             sur_climate[i] = rec["sur_climate"]
             ulv_climate[i] = rec["ulv_climate"]
@@ -1120,7 +1119,7 @@ class Merra2Dataset(Dataset):
                 'ulv_vals', 'ulv_tars', 'sur_climate', 'ulv_climate',
                 'lead_time'.
         """
-        spec = SampleSpec.get(timestamp, input_time, lead_time)
+        spec = SampleSpec.get(timestamp, -input_time, lead_time)
         sample_data = self.get_data_from_sample_spec(spec)
         return sample_data
 
