@@ -513,9 +513,9 @@ class LocalGlobalLocalBlock(nn.Module):
         self.n_blocks = n_blocks
         self._checkpoint = checkpoint or []
 
-        if not all(0 <= c < 2 * n_blocks + 1 for c in checkpoint):
+        if not all(0 <= c < 2 * n_blocks + 1 for c in self._checkpoint):
             raise ValueError(
-                f"Checkpoints should be 0 <= i < 2*n_blocks+1. {checkpoint=}."
+                f"Checkpoints should be 0 <= i < 2*n_blocks+1. {self._checkpoint=}."
             )
 
         self.transformers = nn.ModuleList(
@@ -532,7 +532,7 @@ class LocalGlobalLocalBlock(nn.Module):
         )
 
         self.evaluator = [
-            self._checkpoint_wrapper if i in checkpoint else lambda m, x: m(x)
+            self._checkpoint_wrapper if i in self._checkpoint else lambda m, x: m(x)
             for i, _ in enumerate(self.transformers)
         ]
 
