@@ -26,6 +26,7 @@ dependencies = [
 
 [project.optional-dependencies]
 examples = [
+    "huggingface_hub >= 0.25",
     "notebook ~= 7.2",
     "matplotlib >= 3.8",
 ]
