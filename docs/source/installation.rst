@@ -3,7 +3,7 @@
 Installation
 ************
 
-To install the package, making the the model class and dataloaders available,
+To install the package, making the model class and dataloaders available,
 all you need to do is download the code and pip install the package::
 
     $ git clone https://github.com/NASA-IMPACT/Prithvi-WxC
