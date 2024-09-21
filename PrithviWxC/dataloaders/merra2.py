@@ -15,41 +15,40 @@ from torch.utils.data import Dataset
 
 
 def preproc(batch: list[dict], padding: dict[tuple[int]]) -> dict[str, Tensor]:
-    """
+    """Prepressing function for MERRA2 Dataset
+
     Args:
-        batch: List of training samples. Each sample should be a dictionary
-          with keys 'sur_static', 'sur_vals', 'sur_tars', 'ulv_vals',
-          'ulv_tars', 'lead_time'.
-            The tensors have shape:
-                sur_static: Numpy array of shape (3, lat, lon). For each pixel
-                  (lat, lon), the first dimension indexes sin(lat), cos(lon),
-                  sin(lon).
-                sur_vals: Torch tensor of shape (parameter, time, lat, lon).
-                sur_tars: Torch tensor of shape (parameter, time, lat, lon).
-                ulv_vals: Torch tensor of shape
-                  (parameter, level, time, lat, lon).
-                ulv_tars: Torch tensor of shape
-                  (parameter, level, time, lat, lon).
-                sur_climate: Torch tensor of shape (parameter, lat, lon)
-                ulv_climate: Torch tensor of shape (parameter, level, lat, lon)
-                lead_time: Integer.
-        padding: Dictionary with keys 'level', 'lat', 'lon. For each the value
-          is a tuple of length two indicating padding at the start and end of
-          the relevant dimension.
+        batch (dict): List of training samples, each sample should be a
+            dictionary with the following keys::
+
+            'sur_static': Numpy array of shape (3, lat, lon). For each pixel (lat, lon), the first dimension indexes sin(lat), cos(lon), sin(lon).
+            'sur_vals': Torch tensor of shape (parameter, time, lat, lon).
+            'sur_tars': Torch tensor of shape (parameter, time, lat, lon).
+            'ulv_vals': Torch tensor of shape (parameter, level, time, lat, lon).
+            'ulv_tars': Torch tensor of shape (parameter, level, time, lat, lon).
+            'sur_climate': Torch tensor of shape (parameter, lat, lon)
+            'ulv_climate': Torch tensor of shape (parameter, level, lat, lon)
+            'lead_time': Integer.
+            'input_time': Integer.
+
+        padding: Dictionary with keys 'level', 'lat', 'lon', each of dim 2.
+
     Returns:
-        Dictionary with keys 'x', 'y', 'lead_time' and 'static'. Optionally
-        there's also 'climate'. All are torch tensors. Shapes are as follows:
-            x: batch, time, parameter, lat, lon
-            y: batch, parameter, lat, lon
-            static: batch, parameter, lat, lon
-            lead_time: batch
-            climate (Optional): batch, parameter, lat, lon
-        Here, for x and y, 'parameter' is [surface parameter, upper level
-        parameter x level].
-        Similarly for the static information we have [sin(lat), cos(lon),
-          sin(lon), cos(doy), sin(doy), cos(hod), sin(hod), ...]
-        Where `...` marks additional static information such as lake cover.
-    """
+        Dictionary with the following keys::
+
+            'x': [batch, time, parameter, lat, lon]
+            'y': [batch, parameter, lat, lon]
+            'static': [batch, parameter, lat, lon]
+            'lead_time': [batch]
+            'input_time': [batch]
+            'climate (Optional)': [batch, parameter, lat, lon]
+
+    Note:
+        Here, for x and y, 'parameter' is [surface parameter, upper level,
+        parameter x level]. Similarly for the static information we have
+        [sin(lat), cos(lon), sin(lon), cos(doy), sin(doy), cos(hod), sin(hod),
+        ...].
+    """  # noqa: E501
     b0 = batch[0]
     nbatch = len(batch)
     data_keys = set(b0.keys())
@@ -171,6 +170,19 @@ def input_scalers(
     surf_path: str | Path,
     vert_path: str | Path,
 ) -> tuple[Tensor, Tensor]:
+    """Reads the input scalers
+
+    Args:
+        surf_vars: surface variables to be used.
+        vert_vars: vertical variables to be used.
+        levels: MERRA2 levels to use.
+        surf_path: path to surface scalers file.
+        vert_path: path to vertical level scalers file.
+
+    Returns:
+        mu (Tensor): mean values
+        var (Tensor): varience values
+    """
     with h5py.File(Path(surf_path), "r", libver="latest") as surf_file:
         stats = [x.decode().lower() for x in surf_file["statistic"][()]]
         mu_idx = stats.index("mu")
@@ -275,10 +287,12 @@ class SampleSpec:
 
     @property
     def climatology_info(self) -> tuple[int, int]:
-        """
-        Returns information required to obtain climatology data. Essentially
-        this is the day of the year and hour of the day of the target
-        timestamp, with the former restricted to the interval [1, 365].
+        """Get the required climatology info.
+
+        :return: information required to obtain climatology data. Essentially
+            this is the day of the year and hour of the day of the target
+            timestamp, with the former restricted to the interval [1, 365].
+        :rtype: tuple
         """
         return (min(self.target.dayofyear, 365), self.target.hour)
 
@@ -306,17 +320,18 @@ class SampleSpec:
 
     @classmethod
     def get(cls, timestamp: pd.Timestamp, dt: int, lead_time: int):
-        """
-        Given a timestamp and lead time, generates a SampleSpec object
+        """Given a timestamp and lead time, generates a SampleSpec object
         describing the sample further.
+
         Args:
-            timestamp: Timstamp (issue time) of the sample. I.e. this is the
-                larger of the two input timstamps.
+            timestamp: Timstamp of the sample, Ie this is the larger of the two
+                input timstamps.
             dt: Time between input samples, in hours.
             lead_time: Lead time. In hours.
+
         Returns:
-            SampleSpec object.
-        """
+            SampleSpec
+        """  # noqa: E501
         assert dt > 0, "dt should be possitive"
         lt = pd.to_timedelta(lead_time, unit="h")
         dt = pd.to_timedelta(dt, unit="h")
@@ -342,43 +357,43 @@ class SampleSpec:
 
 
 class Merra2Dataset(Dataset):
-    """
-    MERRA2 dataset. The dataset unifies surface and vertical data as well as
+    """MERRA2 dataset. The dataset unifies surface and vertical data as well as
     optional climatology.
 
     Samples come in the form of a dictionary. Not all keys support all
     variables, yet the general ordering of dimensions is
-        parameter, level, time, lat, lon
+    parameter, level, time, lat, lon
 
-    File structure:
+    Note:
         Data is assumed to be in NetCDF files containing daily data at 3-hourly
-        intervals. These follow the naming patterns MERRA2_sfc_YYYYMMHH.nc and
-        MERRA_pres_YYYYMMHH.nc and can be located in two different locations.
-        Optional climatology data comes from files
+        intervals. These follow the naming patterns
+        MERRA2_sfc_YYYYMMHH.nc and MERRA_pres_YYYYMMHH.nc and can be located in
+        two different locations. Optional climatology data comes from files
         climate_surface_doyDOY_hourHOD.nc and
         climate_vertical_doyDOY_hourHOD.nc.
 
-    Implementation details:
+
+    Note:
         `_get_valid_timestamps` assembles a set of all timestamps for which
         there is data (with hourly resolutions). The result is stored in
         `_valid_timestamps`. `_get_valid_climate_timestamps` does the same with
         climatology data and stores it in `_valid_climate_timestamps`.
 
         Based on this information, `samples` generates a list of valid samples,
-        stored in `samples`. Here the format is
-        ```
-        [
+        stored in `samples`. Here the format is::
+
             [
-                (timestamp 1, lead time A),
-                (timestamp 1, lead time B),
-                (timestamp 1, lead time C),
-            ],
-            [
-                (timestamp 2, lead time D),
-                (timestamp 2, lead time E),
+                [
+                    (timestamp 1, lead time A),
+                    (timestamp 1, lead time B),
+                    (timestamp 1, lead time C),
+                ],
+                [
+                    (timestamp 2, lead time D),
+                    (timestamp 2, lead time E),
+                ]
             ]
-        ]
-        ```
+
         That is, the outer list iterates over timestamps (init times), the
         inner over lead times. Only valid entries are stored.
     """
@@ -462,9 +477,9 @@ class Merra2Dataset(Dataset):
             data_path_surface: Location of surface data.
             data_path_vertical: Location of vertical data.
             climatology_path_surface: Location of (optional) surface
-              climatology.
+                climatology.
             climatology_path_vertical: Location of (optional) vertical
-              climatology.
+                climatology.
             surface_vars: Surface variables.
             static_surface_vars: Static surface variables.
             vertical_vars: Vertical variables.
@@ -557,26 +572,47 @@ class Merra2Dataset(Dataset):
 
     @property
     def upper_shape(self) -> tuple:
-        """
-        Returns the vertical variables shape in the following order: [VAR, LEV,
-        TIME, LAT, LON]
+        """Returns the vertical variables shape
+        Returns:
+            tuple: vertical variable shape in the following order::
+
+                [VAR, LEV, TIME, LAT, LON]
         """
         return self._nuvars, self._nlevel, 2, 361, 576
 
     @property
     def surface_shape(self) -> tuple:
-        """
-        Returns the surface variables shape in the following order: [VAR, LEV,
-        TIME, LAT, LON]
+        """Returns the surface variables shape
+
+        Returns:
+            tuple: surafce shape in the following order::
+
+                [VAR, LEV, TIME, LAT, LON]
         """
         return self._nsvars, 2, 361, 576
 
     def data_file_surface(self, timestamp: pd.Timestamp) -> Path:
+        """Build the surfcae data file name based on timestamp
+
+        Args:
+            timestamp: a timestamp
+
+        Returns:
+            Path: constructed path
+        """
         pattern = "MERRA2_sfc_%Y%m%d.nc"
         data_file = self._data_path_surface / timestamp.strftime(pattern)
         return data_file
 
     def data_file_vertical(self, timestamp: pd.Timestamp) -> Path:
+        """Build the vertical data file name based on timestamp
+
+        Args:
+            timestamp: a timestamp
+
+        Returns:
+            Path: constructed path
+        """
         pattern = "MERRA_pres_%Y%m%d.nc"
         data_file = self._data_path_vertical / timestamp.strftime(pattern)
         return data_file
@@ -595,7 +631,7 @@ class Merra2Dataset(Dataset):
             dayofyear: Day of the year. 1 to 366.
             hourofday: Hour of the day. 0 to 23.
         Returns:
-            Path to climatology file.
+            Path: Path to climatology file.
         """
         if timestamp is not None and (
             (dayofyear is not None) or (hourofday is not None)
@@ -618,16 +654,14 @@ class Merra2Dataset(Dataset):
         dayofyear: int | None = None,
         hourofday: int | None = None,
     ) -> Path:
-        """
-        Returns the path to a climatology file based either on a timestamp or
-        the dayofyear / hourofday combination.
+        """Returns the path to a climatology file based either on a timestamp
+        or the dayofyear / hourofday combination.
 
         Args:
-            timestamp: A timestamp.
-            dayofyear: Day of the year. 1 to 366.
+            timestamp: A timestamp. dayofyear: Day of the year. 1 to 366.
             hourofday: Hour of the day. 0 to 23.
         Returns:
-            Path to climatology file.
+            Path: Path to climatology file.
         """
         if timestamp is not None and (
             (dayofyear is not None) or (hourofday is not None)
@@ -681,10 +715,11 @@ class Merra2Dataset(Dataset):
 
     @ft.cached_property
     def position_signal(self) -> np.ndarray:
-        """
-        Generates the "position signal" that is part of the static features.
+        """Generates the "position signal" that is part of the static
+        features.
+
         Returns:
-            Torch tensor of dimension (parameter, lat, lon) containing
+            Tensor: Torch tensor of dimension (parameter, lat, lon) containing
             sin(lat), cos(lon), sin(lon).
         """
 
@@ -708,12 +743,11 @@ class Merra2Dataset(Dataset):
 
     @ft.cached_property
     def valid_timestamps(self) -> set[pd.Timestamp]:
-        """
-        Generates list of valid timestamps based on available files. Only
+        """Generates list of valid timestamps based on available files. Only
         timestamps for which both surface and vertical information is available
         are considered valid.
         Returns:
-            list of timestamps
+            list: list of timestamps
         """
 
         s_glob = self._data_path_surface.glob("MERRA2_sfc_????????.nc")
@@ -750,12 +784,11 @@ class Merra2Dataset(Dataset):
 
     @ft.cached_property
     def valid_climate_timestamps(self) -> set[tuple[int, int]]:
-        """
-        Generates list of "timestamps" (dayofyear, hourofday) for which
+        """Generates list of "timestamps" (dayofyear, hourofday) for which
         climatology data is present. Only instances for which surface and
         vertical data is available are considered valid.
         Returns:
-            List of tuples describing valid climatology instances.
+            list: List of tuples describing valid climatology instances.
         """
         if not self._require_clim:
             return set()
@@ -792,7 +825,7 @@ class Merra2Dataset(Dataset):
         Args:
             spec: SampleSpec object as returned by SampleSpec.get
         Returns:
-            Boolean value indicating data availability.
+            bool: if data is availability.
         """
         valid = set(spec.times).issubset(self.valid_timestamps)
 
@@ -808,7 +841,7 @@ class Merra2Dataset(Dataset):
         """
         Generates list of all valid samlpes.
         Returns:
-            List of tuples (timestamp, input time, lead time).
+            list: List of tuples (timestamp, input time, lead time).
         """
         valid_samples = []
         dts = [(it, lt) for it in self.input_times for lt in self.lead_times]
@@ -992,35 +1025,28 @@ class Merra2Dataset(Dataset):
     def get_data_from_sample_spec(
         self, spec: SampleSpec
     ) -> dict[str, Tensor | int | float]:
-        """
-        Loads and assembles sample data given a SampleSpec object.
+        """Loads and assembles sample data given a SampleSpec object.
+
         Args:
-            spec: Full details regarding the data to be loaded
-         Returns:
-            Dictionary with keys 'sur_static', 'sur_vals', 'sur_tars',
-                'ulv_vals', 'ulv_tars', 'sur_climate', 'ulv_climate',
-                'lead_time', 'input_time'. For each, the value is as follows:
-                sur_static: Torch tensor of shape [parameter, lat, lon]. For
-                    each pixel (lat, lon), the first 7 dimensions index
-                    sin(lat), cos(lon), sin(lon), cos(doy), sin(doy), cos(hod),
-                    sin(hod).
-                    Where doy is the day of the year [1, 366] and hod the hour
-                    of the day [0, 23].
-                sur_vals: Torch tensor of shape
-                  [parameter, time, lat, lon].
-                sur_tars: Torch tensor of shape
-                  [parameter, time, lat, lon].
-                ulv_vals: Torch tensor of shape
-                  [parameter, level, time, lat, lon].
-                ulv_tars: Torch tensor of shape
-                  [parameter, level, time, lat, lon].
-                sur_climate (Optional): Torch tensor of shape
-                  [parameter, lat, lon].
-                ulv_climate (Optional): Torch tensor of shape
-                  [paramter, level, lat, lon].
-                lead_time: Float.
-                input_time: Float.
-        """
+            spec (SampleSpec): Full details regarding the data to be loaded
+        Returns:
+            dict: Dictionary with the following keys::
+
+                'sur_static': Torch tensor of shape [parameter, lat, lon]. For
+                each pixel (lat, lon), the first 7 dimensions index sin(lat),
+                cos(lon), sin(lon), cos(doy), sin(doy), cos(hod), sin(hod).
+                Where doy is the day of the year [1, 366] and hod the hour of
+                the day [0, 23].
+                'sur_vals': Torch tensor of shape [parameter, time, lat, lon].
+                'sur_tars': Torch tensor of shape [parameter, time, lat, lon].
+                'ulv_vals': Torch tensor of shape [parameter, level, time, lat, lon].
+                'ulv_tars': Torch tensor of shape [parameter, level, time, lat, lon].
+                'sur_climate': Torch tensor of shape [parameter, lat, lon].
+                'ulv_climate': Torch tensor of shape [paramter, level, lat, lon].
+                'lead_time': Float.
+                'input_time': Float.
+
+        """  # noqa: E501
 
         # We assemble the unique timestamps for which we need data.
         vals_required = {*spec.times}

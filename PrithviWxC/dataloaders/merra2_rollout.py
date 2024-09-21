@@ -15,42 +15,40 @@ from PrithviWxC.dataloaders.merra2 import Merra2Dataset, SampleSpec
 def preproc(
     batch: list[dict[str, int | float | Tensor]], padding: dict[tuple[int]]
 ) -> dict[str, Tensor]:
-    """
+    """Prepressing function for MERRA2 Dataset
+
     Args:
-        batch: List of training samples. Each sample should be a dictionary
-          with keys 'sur_static', 'sur_vals', 'sur_tars', 'ulv_vals',
-          'ulv_tars', 'lead_time'.
-            The tensors have shape:
-                sur_static: Numpy array of shape (steps, 3, lat, lon). For each
-                  pixel (lat, lon), the first dimension indexes sin(lat),
-                  cos(lon), sin(lon).
-                sur_vals: Torch tensor of shape (parameter, time, lat, lon).
-                sur_tars: Torch tensor of shape (parameter, time, lat, lon).
-                ulv_vals: Torch tensor of shape
-                  (parameter, level, time, lat, lon).
-                ulv_tars: Torch tensor of shape
-                  (parameter, level, time, lat, lon).
-                sur_climate: Torch tensor of shape (steps, parameter, lat, lon)
-                ulv_climate: Torch tensor of shape
-                  (steps, parameter, level, lat, lon)
-                lead_time: Integer.
-        padding: Dictionary with keys 'level', 'lat', 'lon. For each the value
-          is a tuple of length two indicating padding at the start and end of
-          the relevant dimension.
+        batch (dict): List of training samples, each sample should be a
+            dictionary with the following keys::
+
+            'sur_static': Numpy array of shape (3, lat, lon). For each pixel (lat, lon), the first dimension indexes sin(lat), cos(lon), sin(lon).
+            'sur_vals': Torch tensor of shape (parameter, time, lat, lon).
+            'sur_tars': Torch tensor of shape (parameter, time, lat, lon).
+            'ulv_vals': Torch tensor of shape (parameter, level, time, lat, lon).
+            'ulv_tars': Torch tensor of shape (parameter, level, time, lat, lon).
+            'sur_climate': Torch tensor of shape (nstep, parameter, lat, lon)
+            'ulv_climate': Torch tensor of shape (nstep parameter, level, lat, lon)
+            'lead_time': Integer.
+            'input_time': Interger
+
+        padding: Dictionary with keys 'level', 'lat', 'lon', each of dim 2.
+
     Returns:
-        Dictionary with the follow keys and shapes:
-            x:                   batch, time, parameter, lat, lon
-            ys:                  batch, steps, parameter, lat, lon
-            statics:             batch, time, parameter, lat, lon
-            lead_time:           batch
-            climates (optional): batch, steps, parameter, lat, lon
-        Here, for x and ys, 'parameter' is
-          [surface parameter, upper level parameter x level].
-        Similarly for the static information we have
-            [sin(lat), cos(lon), sin(lon), cos(doy), sin(doy), cos(hod),
-             sin(hod), ...]
-        Where `...` marks additional static information such as lake cover.
-    """
+        Dictionary with the following keys::
+
+            'x': [batch, time, parameter, lat, lon]
+            'ys': [batch, nsteps, parameter, lat, lon]
+            'static': [batch, nstep, parameter, lat, lon]
+            'lead_time': [batch]
+            'input_time': [batch]
+            'climate (Optional)': [batch, nsteps, parameter, lat, lon]
+
+    Note:
+        Here, for x and ys, 'parameter' is [surface parameter, upper level,
+        parameter x level]. Similarly for the static information we have
+        [sin(lat), cos(lon), sin(lon), cos(doy), sin(doy), cos(hod), sin(hod),
+        ...].
+    """  # noqa: E501
 
     b0 = batch[0]
     nbatch = len(batch)
@@ -165,6 +163,10 @@ def preproc(
 
 
 class RolloutSpec(SampleSpec):
+    """
+    A data class to collect the information used to define a rollout sample.
+    """
+
     def __init__(
         self,
         inputs: tuple[pd.Timestamp, pd.Timestamp],
@@ -196,10 +198,9 @@ class RolloutSpec(SampleSpec):
 
     @property
     def climatology_info(self) -> dict[pd.Timestamp, tuple[int, int]]:
-        """
-        Returns information required to obtain climatology data. Essentially
-        this is the day of the year and hour of the day of the target
-        timestamp, with the former restricted to the interval [1, 365].
+        """Returns information required to obtain climatology data.
+        Returns:
+            list: list containing required climatology info.
         """
         return [(min(t.dayofyear, 365), t.hour) for t in self._ctimes]
 
@@ -217,12 +218,13 @@ class RolloutSpec(SampleSpec):
 
     @classmethod
     def get(cls, timestamp: pd.Timestamp, lead_time: int, nsteps: int):
-        """
-        Given a timestamp and lead time, generates a RolloutSpec object
-          describing the sample further.
+        """Given a timestamp and lead time, generates a RolloutSpec object
+        describing the sample further.
+
         Args:
             timestamp: Timstamp (issue time) of the sample.
             lead_time: Lead time. In hours.
+
         Returns:
             SampleSpec object.
         """
@@ -248,14 +250,17 @@ class RolloutSpec(SampleSpec):
 
 
 class Merra2RolloutDataset(Merra2Dataset):
-    """
-    Implementation details:
+    """Dataset class that read MERRA2 data for performing rollout.
+
+    Implementation details::
+
         Samples stores the list of valid samples. This takes the form
         ```
         [
             [(timestamp 1, -input_time, n_steps)],
             [(timestamp 2, -input_time, n_steps)],
         ]
+        ```
         The nested list is for compatibility reasons with Merra2Dataset. Note
         that input time and n_steps are always the same value. For some reason
         the sign of input_time is the opposite to that in Merra2Dataset
@@ -279,6 +284,30 @@ class Merra2RolloutDataset(Merra2Dataset):
         roll_longitudes: int = 0,
         positional_encoding: str = "absolute",
     ):
+        """
+        Args:
+            time_range: time range to consider when building dataset
+            input_time: requested time between inputs
+            lead_time: requested time to predict
+            data_path_surface: path of surface data directory
+            data_path_vertical: path of vertical data directory
+            climatology_path_surface: path of surface climatology data
+            directory
+            climatology_path_vertical: path of vertical climatology data
+            directory
+            surface_vars: surface variables to return
+            static_surface_vars: static surface variables to return
+            vertical_vars: vertical variables to return
+            levels: MERA2 vertical levels to consider
+            roll_longitudes: Whether and now uch to randomly roll latitudes by.
+            Defaults to 0.
+            positional_encoding: The type of possitional encodeing to use.
+            Defaults to "absolute".
+
+        Raises:
+            ValueError: If lead time is not integer multiple of input time
+        """
+
         self._target_lead = lead_time
 
         if isinstance(input_time, int) or isinstance(input_time, float):
@@ -315,8 +344,8 @@ class Merra2RolloutDataset(Merra2Dataset):
 
     @ft.cached_property
     def samples(self) -> list[tuple[pd.Timestamp, int, int]]:
-        """
-        Generates list of all valid samlpes.
+        """Generates list of all valid samlpes.
+
         Returns:
             List of tuples (timestamp, input time, lead time).
         """
@@ -340,34 +369,35 @@ class Merra2RolloutDataset(Merra2Dataset):
     def get_data_from_rollout_spec(
         self, spec: RolloutSpec
     ) -> dict[str, Tensor | int | float]:
-        """
-        Loads and assembles sample data given a SampleSpec object.
+        """Loads and assembles sample data given a RolloutSpec object.
+
         Args:
-            spec: Full details regarding the data to be loaded
-         Returns:
-            Dictionary with keys 'sur_static', 'sur_vals', 'sur_tars',
-                'ulv_vals', 'ulv_tars', 'sur_climate', 'ulv_climate',
-                'lead_time', 'input_time'. For each, the value is as follows:
-                sur_static: Torch tensor of shape [parameter, lat, lon]. For
-                    each pixel (lat, lon), the first 7 dimensions index
-                    sin(lat), cos(lon), sin(lon), cos(doy), sin(doy), cos(hod),
-                    sin(hod).
-                    Where doy is the day of the year [1, 366] and hod the hour
-                    of the day [0, 23].
-                sur_vals: Torch tensor of shape
-                  [parameter, time, lat, lon].
-                sur_tars: Torch tensor of shape
-                  [parameter, time, lat, lon].
-                ulv_vals: Torch tensor of shape
-                  [parameter, level, time, lat, lon].
-                ulv_tars: Torch tensor of shape
-                  [parameter, level, time, lat, lon].
-                sur_climate (Optional): Torch tensor of shape
-                  [nsteps, parameter, lat, lon].
-                ulv_climate (Optional): Torch tensor of shape
-                  [nsteps, paramter, level, lat, lon].
-                lead_time: Float.
-                input_time: Float.
+            spec (RolloutSpec): Full details regarding the data to be loaded
+        Returns:
+            dict: Dictionary with keys 'sur_static', 'sur_vals', 'sur_tars',
+            'ulv_vals', 'ulv_tars', 'sur_climate', 'ulv_climate',c'lead_time',
+            'input_time'. For each, the value is as follows::
+
+            {
+                'sur_static': Torch tensor of shape [parameter, lat, lon]. For
+                each pixel (lat, lon), the first 7 dimensions index sin(lat),
+                cos(lon), sin(lon), cos(doy), sin(doy), cos(hod), sin(hod).
+                Where doy is the day of the year [1, 366] and hod the hour of
+                the day [0, 23].
+                'sur_vals': Torch tensor of shape [parameter, time, lat, lon].
+                'sur_tars': Torch tensor of shape [parameter, time, lat, lon].
+                'ulv_vals': Torch tensor of shape
+                [parameter, level, time, lat, lon].
+                'ulv_tars': Torch tensor of shape
+                [nsteps, parameter, level, time, lat, lon].
+                'sur_climate': Torch tensor of shape
+                [nsteps, parameter, lat, lon].
+                'ulv_climate': Torch tensor of shape
+                [nsteps, paramter, level, lat, lon].
+                'lead_time': Float.
+                'input_time': Float.
+            }
+
         """
 
         # We assemble the unique timestamps for which we need data.
@@ -466,8 +496,8 @@ class Merra2RolloutDataset(Merra2Dataset):
     def get_data(
         self, timestamp: pd.Timestamp, *args, **kwargs
     ) -> dict[Tensor | int]:
-        """
-        Loads data based on timestamp and lead time.
+        """Loads data based on timestamp and lead time.
+
         Args:
             timestamp: Timestamp.
          Returns:

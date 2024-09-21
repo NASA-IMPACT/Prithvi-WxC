@@ -21,16 +21,18 @@ def drop_path(
     scale_by_keep: bool = True,
 ) -> Tensor:
     """Drop paths (Stochastic Depth) per sample (when applied in main path of
-    residual blocks).
+    residual blocks). Taken form timm.
 
-    This is the same as the DropConnect impl I created for EfficientNet, etc
-    networks, however, the original name is misleading as 'Drop Connect' is a
-    different form of dropout in a separate paper...
-    See discussion:
-    https://github.com/tensorflow/tpu/issues/494#issuecomment-532968956 ...
-    I've opted for changing the layer and argument names to 'drop path' rather
-    than mix DropConnect as a layer name and use 'survival rate' as the
-    argument.
+    Args:
+        x (Tensor): Input tensor.
+        drop_prob (float): Probability of dropping `x`, defaults to 0.
+        training (bool): Whether model is in in traingin of eval mode,
+            defaults to False.
+        scale_by_keep (bool): Whether the output should scaled by
+            (`1 - drop_prob`), defaults to True.
+    Returns:
+        Tensor: Tensor that may have randomly dropped with proability
+            `drop_path`
     """
     if drop_prob == 0.0 or not training:
         return x
@@ -44,7 +46,7 @@ def drop_path(
 
 class DropPath(nn.Module):
     """
-    Drop paths (Stochastic Depth) per sample  (when applied in main path of
+    Drop paths (Stochastic Depth) per sample (when applied in main path of
     residual blocks).
     """
 
@@ -56,6 +58,14 @@ class DropPath(nn.Module):
         self.scale_by_keep = scale_by_keep
 
     def forward(self, x: Tensor) -> Tensor:
+        """Runs drop path on input tensor
+
+        Args:
+            x: input
+
+        Returns:
+            tensor: output after drop_path
+        """
         return drop_path(x, self.drop_prob, self.training, self.scale_by_keep)
 
 
@@ -85,17 +95,15 @@ class Mlp(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         """
         Args:
-            Tensor of shape [..., channel]
+            x (Tesnor): Tensor of shape [..., channel]
         Returns:
-            Tensor of same shape as x.
+            Tenosr: Tensor of same shape as x.
         """
         return self.net(x)
 
 
 class LayerNormPassThrough(nn.LayerNorm):
-    """
-    Normalising layer that allows the attention mask to be passed through
-    """
+    """Normalising layer that allows the attention mask to be passed through"""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -103,13 +111,13 @@ class LayerNormPassThrough(nn.LayerNorm):
     def forward(
         self, d: tuple[Tensor, Tensor | None]
     ) -> tuple[Tensor, Tensor | None]:
-        """
-        Forwards function
+        """Forwards function
+
         Args:
-            d: tuple of the data tensor and the attention mask
+            d (tuple): tuple of the data tensor and the attention mask
         Returns:
-            output: normalised output data
-            attn_mask: the attention mask that was passed in
+            output (Tensor): normalised output data
+            attn_mask (Tensor): the attention mask that was passed in
         """
         input, attn_mask = d
         output = F.layer_norm(
@@ -119,8 +127,8 @@ class LayerNormPassThrough(nn.LayerNorm):
 
 
 class MultiheadAttention(nn.Module):
-    """
-    Multihead attention layer for inputs of shape [..., sequence, features].
+    """Multihead attention layer for inputs of shape
+    [..., sequence, features].
     """
 
     def __init__(self, features: int, n_heads: int, dropout: float) -> None:
@@ -130,7 +138,7 @@ class MultiheadAttention(nn.Module):
             n_heads: Number of attention heads. Should be a factor of features.
                 (I.e. the layer uses features // n_heads.)
             dropout: Dropout.
-        """
+        """  # noqa: E501
         super().__init__()
 
         if (features % n_heads) != 0:
@@ -148,11 +156,10 @@ class MultiheadAttention(nn.Module):
     def forward(self, d: tuple[Tensor, Tensor | None]) -> Tensor:
         """
         Args:
-            d: tuple containing Tensor of shape [..., sequence, features] and
-            the attention mask
+            d (tuple): tuple containing Tensor of shape [..., sequence, features] and the attention mask
         Returns:
-            Tensor of shape [..., sequence, features]
-        """
+            Tensor: Tensor of shape [..., sequence, features]
+        """  # noqa: E501
         x, attn_mask = d
 
         if not x.shape[-1] == self.features:
@@ -222,8 +229,7 @@ class Transformer(nn.Module):
             features: Number of features for inputs to the layer.
             mlp_multiplier: Model uses features*mlp_multiplier hidden units.
             n_heads: Number of attention heads. Should be a factor of features.
-                (I.e. the layer uses features // n_heads.)
-            dropout: Dropout.
+            (I.e. the layer uses features // n_heads.) dropout: Dropout.
             drop_path: DropPath.
         """
         super().__init__()
@@ -255,7 +261,7 @@ class Transformer(nn.Module):
         Args:
             x: Tensor of shape [..., sequence, features]
         Returns:
-            Tensor of shape [..., sequence, features]
+            Tensor: Tensor of shape [..., sequence, features]
         """
         x, attn_mask = d
         if not x.shape[-1] == self.features:
@@ -272,9 +278,8 @@ class Transformer(nn.Module):
 
 
 class _Shift(nn.Module):
-    """
-    Private base class for the shifter. This allows some behaviour to be easily
-    handled when the shifter isn't used.
+    """Private base class for the shifter. This allows some behaviour to be
+    easily handled when the shifter isn't used.
     """
 
     def __init__(self):
@@ -440,13 +445,13 @@ class SWINShift(_Shift):
         return lt_it, x_stripped
 
     def forward(self, data: Tensor) -> tuple[Tensor, Tensor]:
-        """
-        Shift or unshift the the data depending on whether the data is already
-        shifted, as defined by self._shifted
+        """Shift or unshift the the data depending on whether the data is
+        already shifted, as defined by self._shifte.
+
         Args:
             data: data to be shifted
         Returns:
-
+            Tensor: shifted data Tensor
         """
         lt, x = self._sep_lt(data)
 
@@ -550,10 +555,14 @@ class LocalGlobalLocalBlock(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         """
         Args:
-            x: Tensor of shape
-            [batch, global_sequence, local_sequence, features]
+            x: Tensor of shape::
+
+                [batch, global_sequence, local_sequence, features]
+
         Returns:
-            Tensor of shape [batch, global_sequence, local_sequence, features]
+            Tensor: Tensor of shape::
+
+                [batch, global_sequence, local_sequence, features]
         """
         if x.shape[-1] != self.features:
             raise ValueError(
@@ -615,8 +624,8 @@ class PatchEmbed(nn.Module):
         Args:
             x: Tensor of shape [batch, channels, lat, lon].
         Returns:
-            Tensor with shape
-            [batch, embed_dim, lat//patch_size, lon//patch_size]
+            Tensor: Tensor with shape
+                [batch, embed_dim, lat//patch_size, lon//patch_size]
         """
 
         H, W = x.shape[-2:]
@@ -690,8 +699,8 @@ class PrithviWxCEncoderDecoder(nn.Module):
               [batch, global sequence, local sequence, embed_dim]
         Returns:
             Tensor of shape
-              [batch, mask_unit_sequence, local_sequence, embed_dim].
-            Identical in shape to the input x.
+                [batch, mask_unit_sequence, local_sequence, embed_dim].
+                Identical in shape to the input x.
         """
 
         x = self.lgl_block(x)
@@ -700,12 +709,11 @@ class PrithviWxCEncoderDecoder(nn.Module):
 
 
 class PrithviWxC(nn.Module):
-    """
-    Encoder-decoder fusing Hiera with MaxViT. See
+    """Encoder-decoder fusing Hiera with MaxViT. See
     - Ryali et al. "Hiera: A Hierarchical Vision Transformer without the
-        Bells-and-Whistles" (https://arxiv.org/abs/2306.00989)
+    Bells-and-Whistles" (https://arxiv.org/abs/2306.00989)
     - Tu et al. "MaxViT: Multi-Axis Vision Transformer"
-        (https://arxiv.org/abs/2204.01697)
+    (https://arxiv.org/abs/2204.01697)
     """
 
     def __init__(
@@ -762,7 +770,6 @@ class PrithviWxC(nn.Module):
             patch_size_px: Patch size for tokenization. In pixels lat/lon.
             mask_unit_size_px: Size of each mask unit. In pixels lat/lon.
             mask_ratio_inputs: Masking ratio for inputs. 0 to 1.
-            mask_ratio_targets: Masking ratio for targets. 0 to 1.
             embed_dim: Embedding dimension
             n_blocks_encoder: Number of local-global transformer pairs in
                 encoder.
@@ -1022,8 +1029,8 @@ class PrithviWxC(nn.Module):
         data_masked: Tensor,
         data_unmasked: Tensor,
     ) -> Tensor:
-        """
-        Reconstructs a tensor along the mask unit dimension. Batched version.
+        """Reconstructs a tensor along the mask unit dimension. Batched
+        version.
 
         Args:
             idx_masked: Tensor of shape `batch, mask unit sequence`.
@@ -1032,17 +1039,17 @@ class PrithviWxC(nn.Module):
                 Should have same size along mask unit sequence dimension as
                 idx_masked. Dimensions beyond the first two, marked here as ...
                 will typically be `local_sequence, channel` or
-                  `channel, lat, lon`. These dimensions should agree with
-                   data_unmasked.
+                `channel, lat, lon`. These dimensions should agree with
+                data_unmasked.
             data_unmasked: Tensor of shape `batch, mask unit sequence, ...`.
                 Should have same size along mask unit sequence dimension as
                 idx_unmasked. Dimensions beyond the first two, marked here as
                 ... will typically be `local_sequence, channel` or `channel,
                 lat, lon`. These dimensions should agree with data_masked.
         Returns:
-            Tensor of same shape as inputs data_masked and data_unmasked. I.e.
-            `batch, mask unit sequence, ...`. Index for the total data composed
-            of the masked and the unmasked part
+            Tensor: Tensor of same shape as inputs data_masked and
+                data_unmasked. I.e. `batch, mask unit sequence, ...`. Index for
+                the total data composed of the masked and the unmasked part.
         """
         dim: int = idx_masked.ndim
 
@@ -1066,7 +1073,8 @@ class PrithviWxC(nn.Module):
         Args
             x_static: B x C x H x W. first two channels are lat, and lon
         Returns
-            Tensor of shape B x E x H x W where E is the embedding dimension.
+            Tensor: Tensor of shape B x E x H x W where E is the embedding
+                dimension.
         """
 
         # B x C x H x W -> B x 1 x H/P x W/P
@@ -1105,7 +1113,7 @@ class PrithviWxC(nn.Module):
             input_time: Tensor of shape [batch].
             lead_time: Tensor of shape [batch].
         Returns:
-            Tensor of shape [batch, embed_dim, 1, 1]
+            Tensor: Tensor of shape [batch, embed_dim, 1, 1]
         """
         input_time = self.input_time_embedding(input_time.view(-1, 1, 1, 1))
         lead_time = self.lead_time_embedding(lead_time.view(-1, 1, 1, 1))
@@ -1152,7 +1160,8 @@ class PrithviWxC(nn.Module):
             x: Tensor in patch space with shape (N, G, L, C*P_0*P_1)
 
         Returns:
-            Tensor in lat/lon space (N, C*P_0*P_1, Nlat//P_0, Nlon // P_1)
+            Tensor: Tensor in lat/lon space
+                (N, C*P_0*P_1, Nlat//P_0, Nlon // P_1)
         """
         n_batch = x.shape[0]
 
@@ -1172,18 +1181,18 @@ class PrithviWxC(nn.Module):
     def forward(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
         """
         Args:
-            batch: Dictionary containing the keys 'x', 'y', 'input_time',
-                'lead_time' and 'static'. The associated torch tensors have the
-                following shapes:
-                x: Tensor of shape [batch, time, parameter, lat, lon]
-                y: Tensor of shape [batch, parameter, lat, lon]
-                static: Tensor of shape [batch, channel_static, lat, lon]
-                climate: Optional tensor of shape [batch, parameter, lat, lon]
-                input_time: Tensor of shape [batch]. Or none.
-                lead_time: Tensor of shape [batch]. Or none.
+            batch: Dictionary the following keys::
+
+                'x': Tensor of shape [batch, time, parameter, lat, lon]
+                'y': Tensor of shape [batch, parameter, lat, lon]
+                'static': Tensor of shape [batch, channel_static, lat, lon]
+                'climate': Optional tensor of shape [batch, parameter, lat, lon]
+                'input_time': Tensor of shape [batch]. Or none.
+                'lead_time': Tensor of shape [batch]. Or none.
+
         Returns:
-            Tensor of shape [batch, parameter, lat, lon].
-        """
+            Tensor: Tensor of shape [batch, parameter, lat, lon].
+        """  # noqa: E501
         x_rescaled = (batch["x"] - self.input_scalers_mu) / (
             self.input_scalers_sigma + self.input_scalers_epsilon
         )
