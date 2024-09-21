@@ -10,6 +10,6 @@ all you need to do is download the code and pip install the package::
     $ pip install Prithvi-WxC
 
 If you wish to try the examples, then you can install the addtional
-dependancies::
+dependencies::
 
     $ pip install "Prithvi-WxC[examples]"
