@@ -1,4 +1,4 @@
-# Prithvi-WxC: A foundation model for weather and climate
+# Prithvi-WxC: Foundation model for weather and climate
 
 This repository contains the code of the Prithvi WxC foundation model as well as a basic zero-shot examples for testing and illustration. For fine-tuning applications please refer to task-specific repositories
 
