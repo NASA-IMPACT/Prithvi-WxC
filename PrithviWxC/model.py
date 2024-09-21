@@ -770,7 +770,6 @@ class PrithviWxC(nn.Module):
             patch_size_px: Patch size for tokenization. In pixels lat/lon.
             mask_unit_size_px: Size of each mask unit. In pixels lat/lon.
             mask_ratio_inputs: Masking ratio for inputs. 0 to 1.
-            mask_ratio_targets: Masking ratio for targets. 0 to 1.
             embed_dim: Embedding dimension
             n_blocks_encoder: Number of local-global transformer pairs in
                 encoder.
