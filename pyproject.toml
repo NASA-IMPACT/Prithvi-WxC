@@ -11,8 +11,6 @@ authors = [
     {name = "Sujit Roy"},
     {name = "Shraddha Singh"},
     {name = "Johannes Jakubik"},
-    {name = "Muthukumaran Ramasubramanian"},
-    {name = "Iksha Gurung"},
     {name = "Julian Kuehnert"},
 ]
 classifiers = [
