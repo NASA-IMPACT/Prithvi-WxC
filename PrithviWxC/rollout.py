@@ -7,6 +7,19 @@ def rollout_iter(
     model: nn.Module,
     batch: dict[str, Tensor | int | float],
 ) -> Tensor:
+    """A helper function for performing autoregressive rollout.
+
+    Args:
+        nsteps (int): The number of rollout steps to take
+        model (nn.Module): A model.
+        batch (dict): A data dictionary common to the Prithvi models.
+
+    Raises:
+        ValueError: If the number of steps isn't positive.
+
+    Returns:
+        Tensor: the output of the model after nsteps autoregressive iterations.
+    """
     if nsteps < 1:
         raise ValueError("'nsteps' shouold be a positive int.")
 

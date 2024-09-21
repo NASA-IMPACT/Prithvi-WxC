@@ -1,0 +1,7 @@
+Sphinx >= 8.0.2
+graphviz
+mkdocs
+sphinx-rtd-theme
+sphinxcontrib-napoleon
+
+pytools >= 2016.2.1
