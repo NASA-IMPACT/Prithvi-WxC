@@ -21,7 +21,7 @@ Beyond these there are zero-shot applications in masked reconstruction and forec
    ```
    git clone https://github.com/NASA-IMPACT/Prithvi-WxC
    cd Prithvi-WxC
-   pip install .examples
+   pip install '.[examples]'
    ```
 3. Run one of the notebooks in the `examples` directory:
    - [Basic inference](examples/PrithviWxC_inference.ipynb)
