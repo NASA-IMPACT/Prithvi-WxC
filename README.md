@@ -2,6 +2,15 @@
 
 This repository contains the code of the Prithvi WxC foundation model as well as a basic zero-shot examples for testing and illustration. For fine-tuning applications please refer to task-specific repositories listed [below](https://github.com/NASA-IMPACT/Prithvi-WxC?tab=readme-ov-file#fine-tuning-applications).
 
+## Architecture overview: A scalable and flexible vision transformer
+
+Prithvi WxC, a scalable 2D vision transformer inspired by Hiera, overcomes architectural limitations to handle non-rectangular data topologies. It leverages a pretraining strategy with attention and fine-tuning with convolutions, drawing from both Hiera and MaxViT approaches.
+
+Our data, structured into windows, takes the shape (batch, windows, tokens, features). We alternate between **local attention** (within a window) and **global attention** (across windows), akin to modulo masking. This is implemented by transposing dimensions between transformer layers. Attention acts on the third dimension, the second being part of the batch. Masking can target entire windows or individual tokens, the latter disrupting global connections between the same token across windows. See the figure for illustration:
+
+![arch_main](https://github.com/user-attachments/assets/2a7eeb73-2ee4-485b-9756-83410866d09a)
+
+
 ## Fine-tuning applications
 
 We have fine-tuned the model to a number of downstream tasks. See the paper as well as the respective repository for details.
