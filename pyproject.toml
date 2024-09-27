@@ -15,12 +15,12 @@ authors = [
 ]
 classifiers = [
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dynamic = ["version", "description"]
 dependencies = [
     "h5py ~= 3.3",
     "numpy ~= 1.26",
-    "pandas ~= 2.2",
+    "pandas",
     "torch >= 2.2",
 ]
 
