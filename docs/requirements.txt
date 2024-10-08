@@ -1,4 +1,4 @@
-Sphinx >= 8.0.2
+Sphinx ~= 7.0
 graphviz
 mkdocs
 sphinx-rtd-theme
