@@ -29,6 +29,7 @@ examples = [
     "huggingface_hub >= 0.25",
     "notebook ~= 7.2",
     "matplotlib >= 3.8",
+    "pyyaml ~= 6.0",
 ]
 
 [tool.ruff]
