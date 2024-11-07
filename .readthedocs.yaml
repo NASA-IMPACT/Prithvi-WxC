@@ -15,7 +15,7 @@ formats:
 
 # Configure how to build the docs
 build:
-  os: ubuntu-22.04
+  os: ubuntu-24.04
   apt_packages:
     - graphviz
   tools:
@@ -37,5 +37,8 @@ build:
 
 # Optionally set the version of Python and requirements required to build your docs
 python:
-   install:
-   - requirements: docs/requirements.txt
+  install:
+  - requirements: docs/requirements.txt
+  # Install our python package before building the docs
+  - method: pip
+    path: .
