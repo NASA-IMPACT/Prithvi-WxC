@@ -803,6 +803,14 @@ class PrithviWxC(nn.Module):
         """
         super().__init__()
 
+        # assume input_scalers_mu is string of form: torch.tensor([0] * 1280)
+        if isinstance(input_scalers_mu, str): input_scalers_mu = eval(input_scalers_mu)
+        if isinstance(input_scalers_sigma, str): input_scalers_sigma = eval(input_scalers_sigma)
+        if isinstance(static_input_scalers_mu, str): static_input_scalers_mu = eval(static_input_scalers_mu)
+        if isinstance(static_input_scalers_sigma, str): static_input_scalers_sigma = eval(static_input_scalers_sigma)
+        if isinstance(output_scalers, str): output_scalers = eval(output_scalers)
+
+        
         self.in_channels = in_channels
         self.input_size_time = input_size_time
         self.in_channels_static = in_channels_static
