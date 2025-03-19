@@ -50,7 +50,40 @@ Prithvi WxC is a very flexible model. It has been pretrained on a pretext task b
 
 ## Data
 
-Prithvi WxC used data from the MERRA-2 reanalysis for pretraining. In particular, the model uses a climatology computed from MERRA-2 data. The climatology, too, is [available via Hugging Face](https://huggingface.co/Prithvi-WxC/prithvi.wxc.2300m.v1/tree/main/climatology). See the paper for details on variables choosen and the methodology behind the climatology.
+Prithvi WxC used data from the MERRA-2 reanalysis for pretraining. Go to [GES DISC](https://disc.gsfc.nasa.gov/) to download the input variables (you may need to create an account there). Next, refer to the `data_preparation/prepare_data.py` script to create the input data for the model.
+
+``` shell
+python preproc.py -i /path/to/raw_input -s /path/to/static -o path/to/out_data -d "20241004"
+```
+
+Please, note that the structure of your `/path/to/raw_input` is expected to be:
+
+```
+ - /path/to/raw_input
+ |- raw
+   |- 2024
+     |- MERRA2_400.inst1_2d_asm_Nx.20241003.nc4
+     |- MERRA2_400.inst1_2d_asm_Nx.20241004.nc4
+        ...
+     |- MERRA2_400.tavg1_2d_rad_Nx.20241011.nc4
+```
+
+where `2024` folder contains `MERRA2_400.inst1_2d_asm_Nx.YYYYMMDD`, `MERRA2_400.inst3_3d_asm_Nv.YYYYMMDD`, `MERRA2_400.tavg1_2d_flx_Nx.YYYYMMDD`, `MERRA2_400.tavg1_2d_lnd_Nx.YYYYMMDD`, `MERRA2_400.tavg1_2d_rad_Nx.YYYYMMDD` files ***from the day before to the final date***. These files can be downloaded from GES DISC and you can find instruction on how to download them [HERE](https://disc.gsfc.nasa.gov/information/howto?title=How%20to%20Access%20GES%20DISC%20Data%20Using%20wget%20and%20curl). The datasets you need are, as described in the paper ([link](https://arxiv.org/html/2409.13598v1#bib)), the following:
+
+ - Surface
+   - M2I1NXASM
+   - M2T1NXLND
+   - M2T1NXFLX
+   - M2T1NXRAD
+ - Vertical
+   - M2I3NVASM
+ - Static
+   - M2C0NXASM
+   - M2CONXCTM
+
+Static files are expected to reside in the root of `/path/to/static`.
+
+The climatology is computed from MERRA-2 data, and it is [available via Hugging Face](https://huggingface.co/Prithvi-WxC/prithvi.wxc.2300m.v1/tree/main/climatology). See the paper for details on variables choosen and the methodology behind the climatology.
 
 
 ## Citation
