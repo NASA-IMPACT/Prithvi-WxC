@@ -189,7 +189,7 @@ class MultiheadAttention(nn.Module):
             ):
                 # x [B, H, S, C//H]
                 x = F.scaled_dot_product_attention(
-                    q, k, v, attn_mask=None, dropout_p=self.dropout
+                    q, k, v, attn_mask=attn_mask, dropout_p=self.dropout
                 )
         else:
             with torch.backends.cuda.sdp_kernel(
