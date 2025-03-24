@@ -38,7 +38,7 @@ def get_model_data():
     We are getting the model data for the rollout model.
     """
     hf_hub_download(
-        repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout/prithvi.wxc.rollout.2300m.v1",
+        repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout",
         filename="config.yaml",
         local_dir="data",
     )
@@ -73,7 +73,7 @@ def get_model_data():
 
     weights_path = Path("./weights/prithvi.wxc.rollout.2300m.v1.pt")
     hf_hub_download(
-        repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout/prithvi.wxc.rollout.2300m.v1",
+        repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout",
         filename=weights_path.name,
         local_dir="data/weights",
     )
