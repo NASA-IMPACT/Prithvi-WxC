@@ -19,6 +19,7 @@ from PrithviWxC.model import PrithviWxC
 from validation.loss import NormalizedMSELoss
 from validation.config import ExperimentConfig, get_config
 from validation.reproducibility import hash_tensor, validate_inputs, validate_rmse
+from validation.get_assets import get_model_data, get_data
 
 # xarray changed the naming in this classmethod in 2023.11.0 from to_array to to_dataarray
 # See https://github.com/pydata/xarray/releases/tag/v2023.11.0.
@@ -595,6 +596,9 @@ def main(config: ExperimentConfig) -> None:
     variable_names = surface_vars + [
         f'{var}_level_{level}' for var in vertical_vars for level in levels
     ]
+
+    print("Downloading model data")
+    get_model_data()
 
     # Get dataloaders
     val_dl = get_dataloaders(config)
