@@ -622,7 +622,7 @@ def main(config: ExperimentConfig) -> None:
     rollout_arg = int(config.data.lead_time / -config.data.input_time)
     print(f"--> Forecast (rollout) validation with {rollout_arg} steps.")
 
-    state_dict = torch.load("/nobackupnfs1/sroy14/huggingface_weights/prithvi.wxc.rollout.2300m.v1.pt", weights_only=False)
+    state_dict = torch.load("data/weights/prithvi.wxc.rollout.2300m.v1.pt", weights_only=False)
     if "model_state" in state_dict:
         state_dict = state_dict["model_state"]
     model.load_state_dict(state_dict, strict=True)
