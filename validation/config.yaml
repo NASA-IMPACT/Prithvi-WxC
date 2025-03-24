@@ -13,8 +13,6 @@ data:
     static_surface_vars: [FRACI, FRLAND, FROCEAN, PHIS]
     vertical_vars: [CLOUD, H, OMEGA, PL, QI, QL, QV, T, U, V]
     levels: [34.0, 39.0, 41.0, 43.0, 44.0, 45.0, 48.0, 51.0, 53.0, 56.0, 63.0, 68.0, 71.0, 72.0]
-    lead_times: [+120]
-    input_times: [-6]
     roll_longitudes_train: 0
     roll_longitudes_valid: 0
     # Processing

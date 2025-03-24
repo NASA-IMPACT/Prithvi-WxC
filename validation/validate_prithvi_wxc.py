@@ -371,8 +371,8 @@ def get_dataloaders(config: ExperimentConfig) -> tuple[DataLoader, DataLoader]:
         static_surface_vars=config.data.static_surface_vars,
         vertical_vars=config.data.vertical_vars,
         levels=config.data.levels,
-        input_times=config.data.input_times,
-        lead_times=config.data.lead_times,
+        input_time=-6,
+        lead_time=120,
         positional_encoding = "fourier",
     )
 
