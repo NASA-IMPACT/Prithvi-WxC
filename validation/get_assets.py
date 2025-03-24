@@ -38,42 +38,42 @@ def get_model_data():
     We are getting the model data for the rollout model.
     """
     hf_hub_download(
-        repo_id="Prithvi-WxC/prithvi.wxc.rollout.2300m.v1",
+        repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout/prithvi.wxc.rollout.2300m.v1",
         filename="config.yaml",
         local_dir="data",
     )
 
     surf_in_scal_path = Path("./climatology/musigma_surface.nc")
     hf_hub_download(
-        repo_id="Prithvi-WxC/prithvi.wxc.2300m.v1",
+        repo_id="ibm-nasa-geospatial/Prithvi-WxC/prithvi.wxc.2300m.v1",
         filename=f"climatology/{surf_in_scal_path.name}",
         local_dir="data",
     )
 
     vert_in_scal_path = Path("./climatology/musigma_vertical.nc")
     hf_hub_download(
-        repo_id="Prithvi-WxC/prithvi.wxc.2300m.v1",
+        repo_id="ibm-nasa-geospatial/Prithvi-WxC/prithvi.wxc.2300m.v1",
         filename=f"climatology/{vert_in_scal_path.name}",
         local_dir="data",
     )
 
     surf_out_scal_path = Path("./climatology/anomaly_variance_surface.nc")
     hf_hub_download(
-        repo_id="Prithvi-WxC/prithvi.wxc.2300m.v1",
+        repo_id="ibm-nasa-geospatial/Prithvi-WxC/prithvi.wxc.2300m.v1",
         filename=f"climatology/{surf_out_scal_path.name}",
         local_dir="data",
     )
 
     vert_out_scal_path = Path("./climatology/anomaly_variance_vertical.nc")
     hf_hub_download(
-        repo_id="Prithvi-WxC/prithvi.wxc.2300m.v1",
+        repo_id="ibm-nasa-geospatial/Prithvi-WxC/prithvi.wxc.2300m.v1",
         filename=f"climatology/{vert_out_scal_path.name}",
         local_dir="data",
     )
 
     weights_path = Path("./weights/prithvi.wxc.rollout.2300m.v1.pt")
     hf_hub_download(
-        repo_id="Prithvi-WxC/prithvi.wxc.rollout.2300m.v1",
+        repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout/prithvi.wxc.rollout.2300m.v1",
         filename=weights_path.name,
         local_dir="data/weights",
     )
