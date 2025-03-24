@@ -735,7 +735,7 @@ class Merra2Dataset(Dataset):
                 axis=0,
             )
         else:
-            sur_static = np.stack([latitudes, longitudes], axis=0)
+            sur_static = np.stack([latitudes / 360. * 2.0 * np.pi, longitudes / 360. * 2.0 * np.pi], axis=0)
 
         sur_static = sur_static.astype(self.rtype)
 
