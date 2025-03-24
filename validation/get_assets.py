@@ -70,3 +70,10 @@ def get_model_data():
         filename=f"climatology/{vert_out_scal_path.name}",
         local_dir="data",
     )
+
+    weights_path = Path("./weights/prithvi.wxc.rollout.2300m.v1.pt")
+    hf_hub_download(
+        repo_id="Prithvi-WxC/prithvi.wxc.rollout.2300m.v1",
+        filename=weights_path.name,
+        local_dir="data/weights",
+    )
