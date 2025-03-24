@@ -597,9 +597,11 @@ def main(config: ExperimentConfig) -> None:
         f'{var}_level_{level}' for var in vertical_vars for level in levels
     ]
 
+    print("Downloading validation data")
+    get_data()
     print("Downloading model data")
     get_model_data()
-
+    
     # Get dataloaders
     val_dl = get_dataloaders(config)
 

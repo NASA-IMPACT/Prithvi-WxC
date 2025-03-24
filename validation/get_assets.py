@@ -2,7 +2,36 @@ from huggingface_hub import hf_hub_download, snapshot_download
 from pathlib import Path
 
 def get_data():
-    pass
+    """
+    We obtain data for ['2020-01-01T00:00:00', '2020-01-06T06:00:00']
+    """
+    surf_dir = Path("./merra-2")
+    snapshot_download(
+        repo_id="Prithvi-WxC/prithvi.wxc.2300m.v1",
+        allow_patterns="merra-2/MERRA2_sfc_2020010[1-6].nc",
+        local_dir="data",
+    )
+
+    vert_dir = Path("./merra-2")
+    snapshot_download(
+        repo_id="Prithvi-WxC/prithvi.wxc.2300m.v1",
+        allow_patterns="merra-2/MERRA_pres_2020010[1-6].nc",
+        local_dir="data",
+    )
+
+    surf_clim_dir = Path("./climatology")
+    snapshot_download(
+        repo_id="Prithvi-WxC/prithvi.wxc.2300m.v1",
+        allow_patterns="climatology/climate_surface_doy00[1-6]*.nc",
+        local_dir="data",
+    )
+
+    vert_clim_dir = Path("./climatology")
+    snapshot_download(
+        repo_id="Prithvi-WxC/prithvi.wxc.2300m.v1",
+        allow_patterns="climatology/climate_vertical_doy00[1-6]*.nc",
+        local_dir="data",
+    )
 
 def get_model_data():
     surf_in_scal_path = Path("./climatology/musigma_surface.nc")
