@@ -27,10 +27,10 @@ data:
         - 0
         - 0
 model:
-  input_scalers_surface_path: /nobackupnfs1/sroy14/processed_data/MERRA2_v2_Statistics/surface_level/musigma_surface.nc
-  input_scalers_vertical_path: /nobackupnfs1/sroy14/processed_data/MERRA2_v2_Statistics/pressure_level/musigma_vertical.nc
-  output_scalers_surface_path: /nobackupnfs1/sroy14/processed_data/MERRA2_v2_Statistics/surface_level/anomaly_variance_surface.nc
-  output_scalers_vertical_path: /nobackupnfs1/sroy14/processed_data/MERRA2_v2_Statistics/pressure_level/anomaly_variance_vertical.nc
+  input_scalers_surface_path: data/climatology/musigma_surface.nc
+  input_scalers_vertical_path: data/climatology/musigma_vertical.nc
+  output_scalers_surface_path: data/climatology/anomaly_variance_surface.nc
+  output_scalers_vertical_path: data/climatology/anomaly_variance_vertical.nc
 
   # Platform independent config
   num_static_channels: 4
