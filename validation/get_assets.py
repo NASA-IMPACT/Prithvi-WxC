@@ -34,6 +34,9 @@ def get_data():
     )
 
 def get_model_data():
+    """
+    We are getting the model data for the rollout model.
+    """
     hf_hub_download(
         repo_id="Prithvi-WxC/prithvi.wxc.rollout.2300m.v1",
         filename="config.yaml",

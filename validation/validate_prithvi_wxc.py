@@ -432,7 +432,6 @@ def get_model(config: ExperimentConfig) -> torch.nn.Module:
         patch_size_px = config.model.token_size,
         mask_unit_size_px = config.mask_unit_size,
         mask_ratio_inputs = config.mask_ratio_inputs,
-        mask_ratio_targets = config.mask_ratio_targets,
         embed_dim = config.model.embed_dim,
         n_blocks_encoder = config.model.n_blocks_encoder,
         n_blocks_decoder = config.model.n_blocks_decoder,

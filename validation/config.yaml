@@ -65,7 +65,6 @@ mask_unit_size:
   - 30
   - 32
 mask_ratio_inputs: 0.0
-mask_ratio_targets: 0.0
 # Data loading options
 batch_size: 1
 dl_num_workers: 1
