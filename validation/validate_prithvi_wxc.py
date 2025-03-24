@@ -14,7 +14,7 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
-from datasets.pretraining import Merra2Dataset, Merra2RolloutDataset
+from PrithviWxC.dataloaders.merra2_rollout import Merra2RolloutDataset
 from PrithviWxC.model import PrithviWxC
 from validation.loss import NormalizedMSELoss
 from validation.config import ExperimentConfig, get_config
@@ -360,12 +360,7 @@ def get_dataloaders(config: ExperimentConfig) -> tuple[DataLoader, DataLoader]:
         Tuple of data loaders: (training loader, validation loader).
     '''
 
-    if config.model.rollout:
-        DatasetCls = Merra2RolloutDataset
-    else:
-        DatasetCls = Merra2Dataset
-
-    valid_dataset = DatasetCls(
+    valid_dataset = Merra2RolloutDataset(
         time_range=config.data.time_range_valid,
         roll_longitudes=0,
         data_path_surface=config.data.data_path_surface,
