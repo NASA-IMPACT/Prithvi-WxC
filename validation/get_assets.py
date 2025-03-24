@@ -34,6 +34,12 @@ def get_data():
     )
 
 def get_model_data():
+    hf_hub_download(
+        repo_id="Prithvi-WxC/prithvi.wxc.rollout.2300m.v1",
+        filename="config.yaml",
+        local_dir="data",
+    )
+
     surf_in_scal_path = Path("./climatology/musigma_surface.nc")
     hf_hub_download(
         repo_id="Prithvi-WxC/prithvi.wxc.2300m.v1",
