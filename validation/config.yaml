@@ -1,8 +1,8 @@
 data:
-    data_path_surface: /nobackupnfs1/sroy14/processed_data_sfc
-    data_path_vertical: /nobackupnfs1/sroy14/merra_pressuredata/processed_data_by_groups
-    climatology_path_surface: /nobackupnfs1/sroy14/processed_data/MERRA2_v2_Statistics/surface_level
-    climatology_path_vertical: /nobackupnfs1/sroy14/processed_data/MERRA2_v2_Statistics/pressure_level
+    data_path_surface: data/merra-2
+    data_path_vertical: data/merra-2
+    climatology_path_surface: data/climatology
+    climatology_path_vertical: data/climatology
     time_range_train: ['1980-01-01T00:00:00', '2019-12-31T23:59:59']
     time_range_valid: ['2020-01-01T00:00:00', '2020-01-06T06:00:00']
 
