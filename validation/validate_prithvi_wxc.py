@@ -372,8 +372,8 @@ def get_dataloaders(config: ExperimentConfig) -> tuple[DataLoader, DataLoader]:
         static_surface_vars=config.data.static_surface_vars,
         vertical_vars=config.data.vertical_vars,
         levels=config.data.levels,
-        input_time=-6,
-        lead_time=120,
+        input_time=config.data.input_time,
+        lead_time=config.data.lead_time,
         positional_encoding = "fourier",
     )
 
@@ -619,7 +619,7 @@ def main(config: ExperimentConfig) -> None:
     # Create model
     model = get_model(config)
 
-    rollout_arg = int(config.data.lead_times[0] / -config.data.input_times[0])
+    rollout_arg = int(config.data.lead_time / -config.data.input_time)
     print(f"--> Forecast (rollout) validation with {rollout_arg} steps.")
 
     state_dict = torch.load("/nobackupnfs1/sroy14/huggingface_weights/prithvi.wxc.rollout.2300m.v1.pt", weights_only=False)
