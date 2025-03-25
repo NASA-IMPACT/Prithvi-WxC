@@ -185,7 +185,7 @@ class MultiheadAttention(nn.Module):
             with sdpa_kernel([SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION]):
                 # x [B, H, S, C//H]
                 x = F.scaled_dot_product_attention(
-                    q, k, v, attn_mask=attn_mask, dropout_p=self.dropout
+                    q, k, v, dropout_p=self.dropout
                 )
         else:
             with torch.backends.cuda.sdp_kernel(
