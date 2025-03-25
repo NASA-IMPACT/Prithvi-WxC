@@ -2,14 +2,17 @@
 
 This repository contains the code of the Prithvi WxC foundation model as well as a basic zero-shot examples for testing and illustration. For fine-tuning applications please refer to task-specific repositories listed [below](https://github.com/NASA-IMPACT/Prithvi-WxC?tab=readme-ov-file#fine-tuning-applications).
 
+## Updates
+
+### March 25, 2025
+
+The previous version of this repo contained a number of bugs that led to incorrect model outputs and worse performance than in our paper. We just addressed these issues. In particular, there is validation code below that lets you verify whether your particular platform and version of the code obtains results comparable to ours. (See step 3 under [Getting started](#getting-started).)
+
 ## Architecture overview: A scalable and flexible vision transformer
 
-Prithvi WxC, a scalable 2D vision transformer inspired by Hiera, overcomes architectural limitations to handle non-rectangular data topologies. It leverages a pretraining strategy with attention and fine-tuning with convolutions, drawing from both Hiera and MaxViT approaches.
+Prithvi WxC is at its core a scalable 2D vision transformer. The architecture is designed to allow for memory-efficient masked pretraining. It draws inspiration from both Hiera, MaxViT and SWIN transformers. Inputs, structured into windows, take the shape (batch, windows, tokens, features). We alternate between **local attention** (within a window) and **global attention** (across windows). This is implemented by transposing dimensions between transformer layers. Attention acts on the third dimension, the second being part of the batch. When data becomes dense -- i.e. in the absence of masking -- it is possible to add SWIN-like shifts to the local attention layers. See the figure for illustration:
 
-Our data, structured into windows, takes the shape (batch, windows, tokens, features). We alternate between **local attention** (within a window) and **global attention** (across windows), akin to modulo masking. This is implemented by transposing dimensions between transformer layers. Attention acts on the third dimension, the second being part of the batch. Masking can target entire windows or individual tokens, the latter disrupting global connections between the same token across windows. See the figure for illustration:
-
-![arch_main](https://github.com/user-attachments/assets/2a7eeb73-2ee4-485b-9756-83410866d09a)
-
+![arch_main](docs/arch_main.png)
 
 ## Fine-tuning applications
 
@@ -32,7 +35,11 @@ Beyond these there are zero-shot applications in masked reconstruction and forec
    cd Prithvi-WxC
    pip install '.[examples]'
    ```
-3. Run one of the notebooks in the `examples` directory:
+3. Validate that the model behaves as expected. For that run
+   ```
+   python -m validation.validate_prithvi_wxc -c validation/config.yaml
+   ```
+4. Run one of the notebooks in the `examples` directory:
    - [Basic inference](examples/PrithviWxC_inference.ipynb)
    - [Rollout inference](examples/PrithviWxC_rollout.ipynb)
    
