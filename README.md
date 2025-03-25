@@ -8,7 +8,7 @@ Prithvi WxC, a scalable 2D vision transformer inspired by Hiera, overcomes archi
 
 Our data, structured into windows, takes the shape (batch, windows, tokens, features). We alternate between **local attention** (within a window) and **global attention** (across windows), akin to modulo masking. This is implemented by transposing dimensions between transformer layers. Attention acts on the third dimension, the second being part of the batch. Masking can target entire windows or individual tokens, the latter disrupting global connections between the same token across windows. See the figure for illustration:
 
-![arch_main](https://github.com/user-attachments/assets/2a7eeb73-2ee4-485b-9756-83410866d09a)
+![arch_main](docs/arch_main.png)
 
 
 ## Fine-tuning applications
