@@ -1,43 +1,39 @@
-from functools import cached_property
 from importlib.metadata import version
+TORCH_VERSION = version('torch')
 
-from torch import Tensor
-from torch.utils.checkpoint import checkpoint
-
-if version("torch") > "2.3.0":
-    from torch.nn.attention import SDPBackend, sdpa_kernel
+from functools import cached_property
+from typing import Optional
 import numpy as np
+
 import torch
+from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
+if TORCH_VERSION > '2.3.0':
+    from torch.nn.attention import SDPBackend, sdpa_kernel
 
 
 # DropPath code is straight from timm
 # (https://huggingface.co/spaces/Roll20/pet_score/blame/main/lib/timm/models/layers/drop.py)
+# Primarily since we currently don't have timm in the environment.
 def drop_path(
-    x: Tensor,
-    drop_prob: float = 0.0,
-    training: bool = False,
-    scale_by_keep: bool = True,
-) -> Tensor:
-    """Drop paths (Stochastic Depth) per sample (when applied in main path of
-    residual blocks). Taken form timm.
+    x, drop_prob: float = 0.0, training: bool = False, scale_by_keep: bool = True
+):
+    """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks).
 
-    Args:
-        x (Tensor): Input tensor.
-        drop_prob (float): Probability of dropping `x`, defaults to 0.
-        training (bool): Whether model is in in traingin of eval mode,
-            defaults to False.
-        scale_by_keep (bool): Whether the output should scaled by
-            (`1 - drop_prob`), defaults to True.
-    Returns:
-        Tensor: Tensor that may have randomly dropped with proability
-            `drop_path`
+    This is the same as the DropConnect impl I created for EfficientNet, etc networks, however,
+    the original name is misleading as 'Drop Connect' is a different form of dropout in a separate paper...
+    See discussion: https://github.com/tensorflow/tpu/issues/494#issuecomment-532968956 ... I've opted for
+    changing the layer and argument names to 'drop path' rather than mix DropConnect as a layer name and use
+    'survival rate' as the argument.
     """
     if drop_prob == 0.0 or not training:
         return x
     keep_prob = 1 - drop_prob
-    shape = (x.shape[0],) + (1,) * (x.ndim - 1)
+    shape = (x.shape[0],) + (1,) * (
+        x.ndim - 1
+    )  # work with diff dim tensors, not just 2D ConvNets
     random_tensor = x.new_empty(shape).bernoulli_(keep_prob)
     if keep_prob > 0.0 and scale_by_keep:
         random_tensor.div_(keep_prob)
@@ -45,27 +41,14 @@ def drop_path(
 
 
 class DropPath(nn.Module):
-    """
-    Drop paths (Stochastic Depth) per sample (when applied in main path of
-    residual blocks).
-    """
+    """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks)."""
 
-    def __init__(
-        self, drop_prob: float | None = None, scale_by_keep: bool = True
-    ) -> None:
+    def __init__(self, drop_prob=None, scale_by_keep=True):
         super(DropPath, self).__init__()
         self.drop_prob = drop_prob
         self.scale_by_keep = scale_by_keep
 
-    def forward(self, x: Tensor) -> Tensor:
-        """Runs drop path on input tensor
-
-        Args:
-            x: input
-
-        Returns:
-            tensor: output after drop_path
-        """
+    def forward(self, x):
         return drop_path(x, self.drop_prob, self.training, self.scale_by_keep)
 
 
@@ -95,29 +78,29 @@ class Mlp(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         """
         Args:
-            x (Tesnor): Tensor of shape [..., channel]
+            Tensor of shape [..., channel]
         Returns:
-            Tenosr: Tensor of same shape as x.
+            Tensor of same shape as x.
         """
         return self.net(x)
 
 
 class LayerNormPassThrough(nn.LayerNorm):
-    """Normalising layer that allows the attention mask to be passed through"""
+    """
+    Normalising layer that allows the attention mask to be passed through
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def forward(
-        self, d: tuple[Tensor, Tensor | None]
-    ) -> tuple[Tensor, Tensor | None]:
-        """Forwards function
-
+    def forward(self, d: tuple[Tensor, Tensor | None]) -> tuple[Tensor, Tensor | None]:
+        """
+        Forwards function
         Args:
-            d (tuple): tuple of the data tensor and the attention mask
+            d: tuple of the data tensor and the attention mask
         Returns:
-            output (Tensor): normalised output data
-            attn_mask (Tensor): the attention mask that was passed in
+            output: normalised output data
+            attn_mask: the attention mask that was passed in
         """
         input, attn_mask = d
         output = F.layer_norm(
@@ -127,8 +110,22 @@ class LayerNormPassThrough(nn.LayerNorm):
 
 
 class MultiheadAttention(nn.Module):
-    """Multihead attention layer for inputs of shape
-    [..., sequence, features].
+    """
+    Multihead attention layer for inputs of shape [..., sequence, features].
+
+    Uses `scaled_dot_product_attention` to obtain a memory efficient attention
+    computation (https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html).
+    This follows:
+    - Dao et la. "FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness"
+        (https://arxiv.org/abs/2205.14135)
+    - Rabe, Staats "Self-attention Does Not Need O(n2) Memory" (https://arxiv.org/abs/2112.05682)
+
+    Note: Even though the documentation page for `scaled_dot_product_attention`
+    states that tensors can have any number of dimensions as long as the shapes
+    are along the lines of `(B, ..., S, E)`, the fused and memory efficient
+    mechanisms we enforce here require a 4D input. Some experimentatino shows
+    that this should be of shape `(B, H, S, E)`, where `H` represents heads.
+    However, as of right now this is not confirmed int he documentation.
     """
 
     def __init__(self, features: int, n_heads: int, dropout: float) -> None:
@@ -138,12 +135,12 @@ class MultiheadAttention(nn.Module):
             n_heads: Number of attention heads. Should be a factor of features.
                 (I.e. the layer uses features // n_heads.)
             dropout: Dropout.
-        """  # noqa: E501
+        """
         super().__init__()
 
-        if (features % n_heads) != 0:
+        if not (features % n_heads) == 0:
             raise ValueError(
-                f"Features '{features}' is not divisible by heads '{n_heads}'."
+                f"Number of features {features} is not divisible by number of heads {n_heads}."
             )
 
         self.features = features
@@ -156,15 +153,16 @@ class MultiheadAttention(nn.Module):
     def forward(self, d: tuple[Tensor, Tensor | None]) -> Tensor:
         """
         Args:
-            d (tuple): tuple containing Tensor of shape [..., sequence, features] and the attention mask
+            d: tuple containing Tensor of shape [..., sequence, features] and
+            the attention mask
         Returns:
-            Tensor: Tensor of shape [..., sequence, features]
-        """  # noqa: E501
+            Tensor of shape [..., sequence, features]
+        """
         x, attn_mask = d
 
         if not x.shape[-1] == self.features:
             raise ValueError(
-                f"Expecting tensor with last dimension size {self.features}."
+                f"Expecting tensor with last dimension of size {self.features}."
             )
 
         passenger_dims = x.shape[:-2]
@@ -183,22 +181,18 @@ class MultiheadAttention(nn.Module):
         )
 
         # Let us enforce either flash (A100+) or memory efficient attention.
-        if version("torch") > "2.3.0":
-            with sdpa_kernel(
-                [SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION]
-            ):
+        if TORCH_VERSION > '2.3.0':
+            with sdpa_kernel([SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION]):
                 # x [B, H, S, C//H]
                 x = F.scaled_dot_product_attention(
-                    q, k, v, dropout_p=self.dropout
+                    q, k, v, attn_mask=attn_mask, dropout_p=self.dropout
                 )
         else:
             with torch.backends.cuda.sdp_kernel(
                 enable_flash=True, enable_math=False, enable_mem_efficient=True
             ):
                 # x [B, H, S, C//H]
-                x = F.scaled_dot_product_attention(
-                    q, k, v, dropout_p=self.dropout
-                )
+                x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.dropout)
 
         # x [B, S, C]
         x = x.transpose(1, 2).view(B, S, C)
@@ -227,9 +221,10 @@ class Transformer(nn.Module):
         """
         Args:
             features: Number of features for inputs to the layer.
-            mlp_multiplier: Model uses features*mlp_multiplier hidden units.
+            mlp_multiplier: Model will use features*mlp_multiplier hidden units.
             n_heads: Number of attention heads. Should be a factor of features.
-            (I.e. the layer uses features // n_heads.) dropout: Dropout.
+                (I.e. the layer uses features // n_heads.)
+            dropout: Dropout.
             drop_path: DropPath.
         """
         super().__init__()
@@ -238,9 +233,7 @@ class Transformer(nn.Module):
         self.mlp_multiplier = mlp_multiplier
         self.n_heads = n_heads
         self.dropout = dropout
-        self.drop_path = (
-            DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
-        )
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
         self.attention = nn.Sequential(
             LayerNormPassThrough(features),
@@ -261,12 +254,12 @@ class Transformer(nn.Module):
         Args:
             x: Tensor of shape [..., sequence, features]
         Returns:
-            Tensor: Tensor of shape [..., sequence, features]
+            Tensor of shape [..., sequence, features]
         """
         x, attn_mask = d
         if not x.shape[-1] == self.features:
             raise ValueError(
-                f"Expecting tensor with last dimension size {self.features}."
+                f"Expecting tensor with last dimension of size {self.features}."
             )
 
         attention_x = self.attention(d)
@@ -276,10 +269,114 @@ class Transformer(nn.Module):
 
         return x
 
+class ParallelTransformer(nn.Module):
+    """
+    Transformer for inputs of shape [..., S, features].
+
+    See also https://github.com/lucidrains/PaLM-pytorch/tree/main.
+    """
+
+    def __init__(
+        self,
+        features: int,
+        mlp_multiplier: int,
+        n_heads: int,
+        dropout: float,
+        drop_path: float,
+    ) -> None:
+        """
+        Args:
+            features: Number of features for inputs to the layer.
+            mlp_multiplier: Model will use features*mlp_multiplier hidden units.
+            n_heads: Number of attention heads. Should be a factor of features.
+                (I.e. the layer uses features // n_heads.)
+            dropout: Dropout.
+            drop_path: DropPath.
+        """
+        super().__init__()
+
+        if drop_path != 0.:
+            raise NotImplementedError('Stochastic depth is not implemented for ParalleTransformer.')
+
+        self.features = features
+        self.mlp_multiplier = mlp_multiplier
+        self.n_heads = n_heads
+        self.dropout = dropout
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+
+        self.input_norm = nn.LayerNorm(features, bias=False)
+        self.qkv_ff_layer = nn.Linear(features, features * (3+mlp_multiplier), bias=False)
+        self.q_norm = nn.LayerNorm(features//n_heads, bias=False)
+        self.k_norm = nn.LayerNorm(features//n_heads, bias=False)
+        self.w_layer = nn.Linear(features, features, bias=True)
+        self.ff_layer = nn.Sequential(
+                nn.GELU(),
+                nn.Linear(mlp_multiplier*features, features, bias=True)
+        )
+
+    def forward(self, d: tuple[Tensor, Tensor | None]) -> Tensor:
+        """
+        Args:
+            x: Tensor of shape [..., sequence, features]
+        Returns:
+            Tensor of shape [..., sequence, features]
+        """
+        x, attn_mask = d
+        if not x.shape[-1] == self.features:
+            raise ValueError(
+                f"Expecting tensor with last dimension of size {self.features}."
+            )
+
+        passenger_dims = x.shape[:-2]
+        B = passenger_dims.numel()
+        S = x.shape[-2]
+        C = x.shape[-1]
+        x = x.view(B, S, C)
+
+        x_prime = self.input_norm(x)
+
+        # [B, S, C] -> [B, S, 3*C], [B, S, MLP*C]
+        qkv, ff = (
+            self.qkv_ff_layer(x_prime)
+            .split((3*self.features, self.mlp_multiplier*self.features), dim=2)
+        )
+        # [B, S, C] -> 3x [B, H, S, C//H]
+        q, k, v = (
+            qkv.view(B, S, self.n_heads, 3 * (C//self.n_heads))
+            .transpose(1, 2)
+            .chunk(chunks=3, dim=3)
+        )
+        q = self.q_norm(q)
+        k = self.k_norm(k)
+
+        # Let us enforce either flash (A100+) or memory efficient attention.
+        if TORCH_VERSION > '2.3.0':
+            with sdpa_kernel([SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION]):
+                # x [B, H, S, C//H]
+                x_prime = F.scaled_dot_product_attention(
+                    q, k, v, attn_mask=attn_mask, dropout_p=self.dropout
+                )
+        else:
+            with torch.backends.cuda.sdp_kernel(
+                enable_flash=True, enable_math=False, enable_mem_efficient=True
+            ):
+                # x [B, H, S, C//H]
+                x_prime = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout)
+
+        # [B, H, S, C//H] -> [B, S, C]
+        x_prime = x_prime.transpose(1, 2).reshape(B, S, C)
+
+        x = x + self.w_layer(x_prime) + self.ff_layer(ff)
+
+        # Back to input shape
+        x = x.view(*passenger_dims, S, self.features)
+
+        return x
 
 class _Shift(nn.Module):
-    """Private base class for the shifter. This allows some behaviour to be
-    easily handled when the shifter isn't used.
+    """
+    Private base class for the shifter. This allows some behaviour to be easily
+    handled when the shifter isn't used.
     """
 
     def __init__(self):
@@ -319,8 +416,7 @@ class SWINShift(_Shift):
             global_shape: number of global patches in lat and lon
             local_shape: size of the local patches
             patch_shape: patch size
-            n_context_token: number of additional context tokens at start of
-            _each_ local sequence
+            n_context_token: number of additional context tokens at start of _each_ local sequence
         """
         super().__init__()
 
@@ -331,18 +427,12 @@ class SWINShift(_Shift):
         self._lat_patch = (gs[0], ls[0], gs[1], ls[1])
         self._n_context_tokens = n_context_tokens
 
-        self._g_shift_to = tuple(
-            int(0.5 * x / p) for x, p in zip(ms, ps, strict=False)
-        )
-        self._g_shift_from = tuple(
-            -int(0.5 * x / p) for x, p in zip(ms, ps, strict=False)
-        )
+        self._g_shift_to = tuple(int(0.5 * x / p) for x, p in zip(ms, ps))
+        self._g_shift_from = tuple(-int(0.5 * x / p) for x, p in zip(ms, ps))
 
         # Define the attention masks for the shifted MaxViT.
         nglobal = global_shape[0] * global_shape[1]
-        nlocal = (
-            local_shape[0] * local_shape[1] + self._n_context_tokens
-        )  # "+ 1" for leadtime
+        nlocal = local_shape[0] * local_shape[1] + self._n_context_tokens  # "+ 1" for leadtime
 
         lm = torch.ones((nglobal, 1, nlocal, nlocal), dtype=bool)
         mwidth = int(0.5 * local_shape[1]) * local_shape[0]
@@ -445,13 +535,13 @@ class SWINShift(_Shift):
         return lt_it, x_stripped
 
     def forward(self, data: Tensor) -> tuple[Tensor, Tensor]:
-        """Shift or unshift the the data depending on whether the data is
-        already shifted, as defined by self._shifte.
-
+        """
+        Shift or unshift the the data depending on whether the data is already
+        shifted, as defined by self._shifted
         Args:
             data: data to be shifted
         Returns:
-            Tensor: shifted data Tensor
+
         """
         lt, x = self._sep_lt(data)
 
@@ -474,16 +564,187 @@ class SWINShift(_Shift):
 
         return torch.cat((lt, x_patched), axis=1), attn_mask
 
+class SWINShiftNoBuffer(_Shift):
+    """
+    Handles the shifting of patches similar to how SWIN works. However if we
+    shift the latitudes then the poles will wrap and potentially that might be
+    problematic. The possition tokens should handle it but masking is safer.
+    """
+
+    def __init__(
+        self,
+        mu_shape: tuple[int, int],
+        global_shape: tuple[int, int],
+        local_shape: tuple[int, int],
+        patch_shape: tuple[int, int],
+        n_context_tokens: int = 2,
+    ) -> None:
+        """
+        Args:
+            mu_shape: the shape to the masking units
+            global_shape: number of global patches in lat and lon
+            local_shape: size of the local patches
+            patch_shape: patch size
+            n_context_token: number of additional context tokens at start of _each_ local sequence
+        """
+        super().__init__()
+
+        self._mu_shape = ms = mu_shape
+        self._g_shape = gs = global_shape
+        self._l_shape = ls = local_shape
+        self._p_shape = ps = patch_shape
+        self._lat_patch = (gs[0], ls[0], gs[1], ls[1])
+        self._n_context_tokens = n_context_tokens
+
+        self._g_shift_to = tuple(int(0.5 * x / p) for x, p in zip(ms, ps))
+        self._g_shift_from = tuple(-int(0.5 * x / p) for x, p in zip(ms, ps))
+
+        # Define the attention masks for the shifted MaxViT.
+        nglobal = global_shape[0] * global_shape[1]
+        nlocal = local_shape[0] * local_shape[1] + self._n_context_tokens  # "+ 1" for leadtime
+
+        lm = torch.ones((nglobal, 1, nlocal, nlocal), dtype=bool)
+        mwidth = int(0.5 * local_shape[1]) * local_shape[0]
+        lm[
+            : gs[1],
+            :,
+            self._n_context_tokens : mwidth + self._n_context_tokens,
+            self._n_context_tokens : mwidth + self._n_context_tokens,
+        ] = False
+        self.local_mask = lm
+
+        gm = torch.ones((nlocal, 1, nglobal, nglobal), dtype=bool)
+        gm[: int(0.5 * ls[1]) * ls[0], :, : gs[1], : gs[1]] = False
+        self.global_mask = gm
+
+    def _to_grid_global(self, x: Tensor) -> Tensor:
+        """
+        Shuffle and reshape the data from the global/local setting back to the
+        lat/lon grid setting
+        Args:
+            x: the data tensor to be shuffled.
+        Returns:
+            x: data in the global/local setting
+        """
+        nbatch, *other = x.shape
+
+        y1 = x.view(nbatch, *self._g_shape, *self._l_shape, -1)
+        y2 = y1.permute(0, 5, 1, 3, 2, 4).contiguous()
+
+        s = y2.shape
+        return y2.view((nbatch, -1, s[2] * s[3], s[4] * s[5]))
+
+    def _to_grid_local(self, x: Tensor) -> Tensor:
+        """
+        Shuffle and reshape the data from the local/global setting to the
+        lat/lon grid setting
+        Args:
+            x: the data tensor to be shuffled.
+        Returns:
+            x: data in the lat/lon setting.
+        """
+        x = x.transpose(2, 1).contiguous()
+        return self._to_grid_global(x)
+
+    def _from_grid_global(self, x: Tensor) -> Tensor:
+        """
+        Shuffle and reshape the data from the lat/lon grid to the global/local
+        setting
+        Args:
+            x: the data tensor to be shuffled.
+        Returns:
+            x: data in the global/local setting
+        """
+        nbatch, *other = x.shape
+
+        z1 = x.view(nbatch, -1, *self._lat_patch)
+        z2 = z1.permute(0, 2, 4, 3, 5, 1).contiguous()
+
+        s = z2.shape
+        return z2.view(nbatch, s[1] * s[2], s[3] * s[4], -1)
+
+    def _from_grid_local(self, x: Tensor) -> Tensor:
+        """
+        Shuffle and reshape the data from the lat/lon grid to the local/global
+        setting
+        Args:
+            x: the data tensor to be shuffled.
+        Returns:
+            x: data in the local/global setting
+        """
+        x = self._from_grid_global(x)
+        return x.transpose(2, 1).contiguous()
+
+    def _shift(self, x: Tensor) -> Tensor:
+        """
+        Shifts data in the gridded lat/lon setting by half the mask unit shape
+        Args:
+            x: data to be shifted
+        Returns:
+            x: either the hsifted or unshifted data
+        """
+        shift = self._g_shift_from if self._shifted else self._g_shift_to
+        x_shifted = torch.roll(x, shift, (-2, -1))
+
+        self._shifted = not self._shifted
+        return x_shifted
+
+    def _sep_lt(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        """
+        Seperate off the leadtime from the local patches
+        Args:
+            x: data to have leadtime removed from
+        Returns:
+            lt: leadtime
+            x: data without the lead time in the local patch
+        """
+        lt_it = x[:, : self._n_context_tokens, :, :]
+        x_stripped = x[:, self._n_context_tokens :, :, :]
+
+        return lt_it, x_stripped
+
+    def forward(self, data: Tensor) -> tuple[Tensor, Tensor]:
+        """
+        Shift or unshift the the data depending on whether the data is already
+        shifted, as defined by self._shifted
+        Args:
+            data: data to be shifted
+        Returns:
+
+        """
+        lt, x = self._sep_lt(data)
+
+        if self.local_mask.device != x.device:
+            self.local_mask = self.local_mask.to(device=x.device)
+        if self.global_mask.device != x.device:
+            self.global_mask = self.global_mask.to(device=x.device)
+
+        x_grid = self._to_grid_local(x)
+        x_shifted = self._shift(x_grid)
+        x_patched = self._from_grid_local(x_shifted)
+
+        # Mask has to be repeated based on batch size
+        n_batch = x_grid.shape[0]
+        local_rep = [n_batch] + [1] * (self.local_mask.ndim - 1)
+        global_rep = [n_batch] + [1] * (self.global_mask.ndim - 1)
+
+        if self._shifted:
+            attn_mask = {
+                True: self.local_mask.repeat(local_rep),
+                False: self.global_mask.repeat(global_rep),
+            }
+        else:
+            attn_mask = {True: None, False: None}
+
+        return torch.cat((lt, x_patched), axis=1), attn_mask
 
 class LocalGlobalLocalBlock(nn.Module):
     """
-    Applies alternating block and grid attention. Given a parameter n_blocks,
-    the entire module contains 2*n_blocks+1 transformer blocks. The first,
-    third, ..., last apply local (block) attention. The second, fourth, ...
-    global (grid) attention.
+    Applies alternating block and grid attention. Given a parameter n_blocks, the entire
+    module contains 2*n_blocks+1 transformer blocks. The first, third, ..., last apply
+    local (block) attention. The second, fourth, ... global (grid) attention.
 
-    This is heavily inspired by
-    Tu et al. "MaxViT: Multi-Axis Vision Transformer"
+    This is heavily inspired by Tu et al. "MaxViT: Multi-Axis Vision Transformer"
     (https://arxiv.org/abs/2204.01697).
     """
 
@@ -496,12 +757,12 @@ class LocalGlobalLocalBlock(nn.Module):
         n_blocks: int,
         drop_path: float,
         shifter: nn.Module | None = None,
-        checkpoint: list[int] | None = None,
+        checkpoint: list[int]=[],
     ) -> None:
         """
         Args:
             features: Number of features for inputs to the layer.
-            mlp_multiplier: Model uses features*mlp_multiplier hidden units.
+            mlp_multiplier: Model will use features*mlp_multiplier hidden units.
             n_heads: Number of attention heads. Should be a factor of features.
             (I.e. the layer uses features // n_heads.)
             dropout: Dropout.
@@ -516,13 +777,11 @@ class LocalGlobalLocalBlock(nn.Module):
         self.dropout = dropout
         self.drop_path = drop_path
         self.n_blocks = n_blocks
-        self._checkpoint = checkpoint or []
+        self._checkpoint = checkpoint
 
-        if not all(0 <= c < 2 * n_blocks + 1 for c in self._checkpoint):
-            raise ValueError(
-                "Checkpoints should be 0 <= i < 2*n_blocks+1. "
-                f"{self._checkpoint=}."
-            )
+        if len(checkpoint) > 0:
+            if min(checkpoint) < 0 or max(checkpoint) >= 2 * n_blocks + 1:
+                raise ValueError(f'Checkpoints should satisfy 0 <= i < 2*n_blocks+1. We have {checkpoint}.')
 
         self.transformers = nn.ModuleList(
             [
@@ -538,46 +797,37 @@ class LocalGlobalLocalBlock(nn.Module):
         )
 
         self.evaluator = [
-            self._checkpoint_wrapper
-            if i in self._checkpoint
-            else lambda m, x: m(x)
+            self._checkpoint_wrapper if i in checkpoint else lambda m, x : m(x)
             for i, _ in enumerate(self.transformers)
         ]
 
         self.shifter = shifter or _Shift()
 
     @staticmethod
-    def _checkpoint_wrapper(
-        model: nn.Module, data: tuple[Tensor, Tensor | None]
-    ) -> Tensor:
+    def _checkpoint_wrapper(model, data):
         return checkpoint(model, data, use_reentrant=False)
 
     def forward(self, x: Tensor) -> Tensor:
         """
         Args:
-            x: Tensor of shape::
-
-                [batch, global_sequence, local_sequence, features]
-
+            x: Tensor of shape [batch, global_sequence, local_sequence, features]
         Returns:
-            Tensor: Tensor of shape::
-
-                [batch, global_sequence, local_sequence, features]
+            Tensor of shape [batch, global_sequence, local_sequence, features]
         """
         if x.shape[-1] != self.features:
             raise ValueError(
-                f"Expecting tensor with last dimension size {self.features}."
+                f"Expecting tensor with last dimension of size {self.features}."
             )
         if x.ndim != 4:
             raise ValueError(
-                f"Expecting tensor with exactly four dimensions. {x.shape=}."
+                f"Expecting tensor with exactly four dimensions. Input has shape {x.shape}."
             )
 
         self.shifter.reset()
         local: bool = True
         attn_mask = {True: None, False: None}
 
-        transformer_iter = zip(self.evaluator, self.transformers, strict=False)
+        transformer_iter = zip(self.evaluator, self.transformers)
 
         # First local block
         evaluator, transformer = next(transformer_iter)
@@ -612,11 +862,7 @@ class PatchEmbed(nn.Module):
         self.embed_dim = embed_dim
 
         self.proj = nn.Conv2d(
-            channels,
-            embed_dim,
-            kernel_size=patch_size,
-            stride=patch_size,
-            bias=True,
+            channels, embed_dim, kernel_size=patch_size, stride=patch_size, bias=True
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -624,8 +870,7 @@ class PatchEmbed(nn.Module):
         Args:
             x: Tensor of shape [batch, channels, lat, lon].
         Returns:
-            Tensor: Tensor with shape
-                [batch, embed_dim, lat//patch_size, lon//patch_size]
+            Tensor with shape [batch, embed_dim, lat//patch_size, lon//patch_size]
         """
 
         H, W = x.shape[-2:]
@@ -660,7 +905,7 @@ class PrithviWxCEncoderDecoder(nn.Module):
         dropout: float,
         drop_path: float,
         shifter: nn.Module | None = None,
-        transformer_cp: list[int] | None = None,
+        transformer_cp: list[int]=[],
     ) -> None:
         """
         Args:
@@ -692,15 +937,16 @@ class PrithviWxCEncoderDecoder(nn.Module):
             checkpoint=transformer_cp,
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor
+    ) -> torch.Tensor:
         """
         Args:
-            x: Tensor of shape
-              [batch, global sequence, local sequence, embed_dim]
+            x: Tensor of shape [batch, global sequence, local sequence, embed_dim]
         Returns:
-            Tensor of shape
-                [batch, mask_unit_sequence, local_sequence, embed_dim].
-                Identical in shape to the input x.
+            Tensor of shape [batch, mask_unit_sequence, local_sequence, embed_dim].
+            Identical in shape to the input x.
         """
 
         x = self.lgl_block(x)
@@ -709,11 +955,12 @@ class PrithviWxCEncoderDecoder(nn.Module):
 
 
 class PrithviWxC(nn.Module):
-    """Encoder-decoder fusing Hiera with MaxViT. See
+    """
+    Encoder-decoder fusing Hiera with MaxViT. See
     - Ryali et al. "Hiera: A Hierarchical Vision Transformer without the
-    Bells-and-Whistles" (https://arxiv.org/abs/2306.00989)
+        Bells-and-Whistles" (https://arxiv.org/abs/2306.00989)
     - Tu et al. "MaxViT: Multi-Axis Vision Transformer"
-    (https://arxiv.org/abs/2204.01697)
+        (https://arxiv.org/abs/2204.01697)
     """
 
     def __init__(
@@ -733,6 +980,7 @@ class PrithviWxC(nn.Module):
         patch_size_px: tuple[int],
         mask_unit_size_px: tuple[int],
         mask_ratio_inputs: float,
+        mask_ratio_targets: float,
         embed_dim: int,
         n_blocks_encoder: int,
         n_blocks_decoder: int,
@@ -745,8 +993,8 @@ class PrithviWxC(nn.Module):
         masking_mode: str,
         positional_encoding: str,
         decoder_shifting: bool = False,
-        checkpoint_encoder: list[int] | None = None,
-        checkpoint_decoder: list[int] | None = None,
+        checkpoint_encoder: list[int]=[],
+        checkpoint_decoder: list[int]=[],
     ) -> None:
         """
         Args:
@@ -770,6 +1018,7 @@ class PrithviWxC(nn.Module):
             patch_size_px: Patch size for tokenization. In pixels lat/lon.
             mask_unit_size_px: Size of each mask unit. In pixels lat/lon.
             mask_ratio_inputs: Masking ratio for inputs. 0 to 1.
+            mask_ratio_targets: Masking ratio for targets. 0 to 1.
             embed_dim: Embedding dimension
             n_blocks_encoder: Number of local-global transformer pairs in
                 encoder.
@@ -783,25 +1032,22 @@ class PrithviWxC(nn.Module):
             parameter_dropout: Dropout applied to parameters.
             residual: Indicates whether and how model should work as residual
                 model. Accepted values are 'climate', 'temporal' and 'none'
-            positional_encoding: possible values are
-              ['absolute' (default), 'fourier'].
-                'absolute'  lat lon encoded in 3 dimensions using sine and
-                  cosine
+            positional_encoding: possible values are ['absolute' (default), 'fourier'].
+                'absolute'  lat lon encoded in 3 dimensions using sine and cosine
                 'fourier' lat/lon to be encoded using various frequencies
             masking_mode: String ['local', 'global', 'both'] that controls the
                 type of masking used.
-            checkpoint_encoder: List of integers controlling if gradient
-              checkpointing is used on encoder.
-                Format: [] for no gradient checkpointing. [3, 7] for
-                  checkpointing after 4th and 8th layer etc.
-            checkpoint_decoder: List of integers controlling if gradient
-              checkpointing is used on decoder.
+            checkpoint_encoder: List of integers controlling if gradient checkpointing is used on encoder.
+                Format: [] for no gradient checkpointing. [3, 7] for checkpointing after 4th and 8th layer etc.
+            checkpoint_decoder: List of integers controlling if gradient checkpointing is used on decoder.
                 Format: See `checkpoint_encoder`.
-            masking_mode: The type of masking to use
-              {'global', 'local', 'both'}
+            masking_mode: The type of masking to use {'global', 'local', 'both'}
             decoder_shifting: Whether to use swin shifting in the decoder.
         """
         super().__init__()
+
+        if mask_ratio_targets > 0.0:
+            raise NotImplementedError("Target masking is not implemented.")
 
         self.in_channels = in_channels
         self.input_size_time = input_size_time
@@ -811,6 +1057,7 @@ class PrithviWxC(nn.Module):
         self.patch_size_px = patch_size_px
         self.mask_unit_size_px = mask_unit_size_px
         self.mask_ratio_inputs = mask_ratio_inputs
+        self.mask_ratio_targets = mask_ratio_targets
         self.embed_dim = embed_dim
         self.n_blocks_encoder = n_blocks_encoder
         self.n_blocks_decoder = n_blocks_decoder
@@ -831,7 +1078,7 @@ class PrithviWxC(nn.Module):
 
         if self.patch_size_px[0] != self.patch_size_px[1]:
             raise NotImplementedError(
-                "Current pixel shuffle symmetric patches."
+                "Current pixel shuffle implementation assumes same patch size along both dimensions."
             )
 
         self.local_shape_mu = (
@@ -847,34 +1094,22 @@ class PrithviWxC(nn.Module):
         assert input_scalers_sigma.shape == (in_channels,)
         assert output_scalers.shape == (in_channels,)
 
-        if self.positional_encoding != "fourier":
+        if self.positional_encoding != 'fourier':
             assert static_input_scalers_mu.shape == (in_channels_static,)
             assert static_input_scalers_sigma.shape == (in_channels_static,)
 
         # Input shape [batch, time, parameter, lat, lon]
         self.input_scalers_epsilon = input_scalers_epsilon
-        self.register_buffer(
-            "input_scalers_mu", input_scalers_mu.reshape(1, 1, -1, 1, 1)
-        )
-        self.register_buffer(
-            "input_scalers_sigma", input_scalers_sigma.reshape(1, 1, -1, 1, 1)
-        )
+        self.register_buffer('input_scalers_mu', input_scalers_mu.reshape(1, 1, -1, 1, 1))
+        self.register_buffer('input_scalers_sigma', input_scalers_sigma.reshape(1, 1, -1, 1, 1))
 
         # Static inputs shape [batch, parameter, lat, lon]
         self.static_input_scalers_epsilon = static_input_scalers_epsilon
-        self.register_buffer(
-            "static_input_scalers_mu",
-            static_input_scalers_mu.reshape(1, -1, 1, 1),
-        )
-        self.register_buffer(
-            "static_input_scalers_sigma",
-            static_input_scalers_sigma.reshape(1, -1, 1, 1),
-        )
+        self.register_buffer('static_input_scalers_mu', static_input_scalers_mu.reshape(1, -1, 1, 1))
+        self.register_buffer('static_input_scalers_sigma', static_input_scalers_sigma.reshape(1, -1, 1, 1))
 
         # Output shape [batch, parameter, lat, lon]
-        self.register_buffer(
-            "output_scalers", output_scalers.reshape(1, -1, 1, 1)
-        )
+        self.register_buffer('output_scalers', output_scalers.reshape(1, -1, 1, 1))
 
         self.parameter_dropout = nn.Dropout2d(p=parameter_dropout)
 
@@ -897,8 +1132,8 @@ class PrithviWxC(nn.Module):
                 embed_dim=embed_dim,
             )
 
-        self.input_time_embedding = nn.Linear(1, embed_dim // 4, bias=True)
-        self.lead_time_embedding = nn.Linear(1, embed_dim // 4, bias=True)
+        self.input_time_embedding = nn.Linear(1, embed_dim//4, bias=True)
+        self.lead_time_embedding = nn.Linear(1, embed_dim//4, bias=True)
 
         self.mask_token = nn.Parameter(torch.randn(1, 1, 1, self.embed_dim))
         self._nglobal_mu = np.prod(self.global_shape_mu)
@@ -907,6 +1142,13 @@ class PrithviWxC(nn.Module):
         self._nlocal_mu = np.prod(self.local_shape_mu)
         self._local_idx = torch.arange(self._nlocal_mu)
 
+        self.encoder_shifter = e_shifter = SWINShiftNoBuffer(
+            self.mask_unit_size_px,
+            self.global_shape_mu,
+            self.local_shape_mu,
+            self.patch_size_px,
+            n_context_tokens=0,
+        )
         self.encoder = PrithviWxCEncoderDecoder(
             embed_dim=embed_dim,
             n_blocks=n_blocks_encoder,
@@ -914,6 +1156,7 @@ class PrithviWxC(nn.Module):
             n_heads=n_heads,
             dropout=dropout,
             drop_path=drop_path,
+            shifter=e_shifter,
             transformer_cp=checkpoint_encoder,
         )
 
@@ -935,16 +1178,14 @@ class PrithviWxC(nn.Module):
                 mlp_multiplier=mlp_multiplier,
                 n_heads=n_heads,
                 dropout=dropout,
-                drop_path=0.0,
+                drop_path=0.,
                 shifter=d_shifter,
                 transformer_cp=checkpoint_decoder,
             )
 
             self.unembed = nn.Linear(
                 self.embed_dim,
-                self.in_channels
-                * self.patch_size_px[0]
-                * self.patch_size_px[1],
+                self.in_channels * self.patch_size_px[0] * self.patch_size_px[1],
                 bias=True,
             )
 
@@ -958,12 +1199,11 @@ class PrithviWxC(nn.Module):
                 self._mask_both_local: bool = True
                 self.generate_mask = self._gen_mask_both
             case _:
-                raise ValueError(
-                    f"Masking mode '{masking_mode}' not supported"
-                )
+                raise ValueError(f"Masking mode '{masking_mode}' not supported")
 
     def swap_masking(self) -> None:
-        self._mask_both_local = not self._mask_both_local
+        if hasattr(self, '_mask_both_local'):
+            self._mask_both_local = not self._mask_both_local
 
     @cached_property
     def n_masked_global(self):
@@ -975,6 +1215,7 @@ class PrithviWxC(nn.Module):
 
     @staticmethod
     def _shuffle_along_axis(a, axis):
+        # https://stackoverflow.com/questions/5040797/shuffling-numpy-array-along-a-given-axis
         idx = torch.argsort(input=torch.rand(*a.shape), dim=axis)
         return torch.gather(a, dim=axis, index=idx)
 
@@ -986,12 +1227,13 @@ class PrithviWxC(nn.Module):
             Tuple of torch tensors. [indices masked, indices unmasked].
             Each of these is a tensor of shape (batch, global sequene)
         """
-        # Identify which indices (values) should be masked
+        # We identifies which indices (values) should be masked
 
         maskable_indices = self._local_idx.view(1, -1).expand(*sizes[:2], -1)
 
         maskable_indices = self._shuffle_along_axis(maskable_indices, 2)
 
+        # `...` cannot be jit'd :-(
         indices_masked = maskable_indices[:, :, : self.n_masked_local]
         indices_unmasked = maskable_indices[:, :, self.n_masked_local :]
 
@@ -1005,7 +1247,7 @@ class PrithviWxC(nn.Module):
             Tuple of torch tensors. [indices masked, indices unmasked].
             Each of these is a tensor of shape (batch, global sequene)
         """
-        # Identify which indices (values) should be masked
+        # We identifies which indices (values) should be masked
 
         maskable_indices = self._global_idx.view(1, -1).expand(*sizes[:1], -1)
 
@@ -1029,8 +1271,8 @@ class PrithviWxC(nn.Module):
         data_masked: Tensor,
         data_unmasked: Tensor,
     ) -> Tensor:
-        """Reconstructs a tensor along the mask unit dimension. Batched
-        version.
+        """
+        Reconstructs a tensor along the mask unit dimension. Batched version.
 
         Args:
             idx_masked: Tensor of shape `batch, mask unit sequence`.
@@ -1038,83 +1280,62 @@ class PrithviWxC(nn.Module):
             data_masked: Tensor of shape `batch, mask unit sequence, ...`.
                 Should have same size along mask unit sequence dimension as
                 idx_masked. Dimensions beyond the first two, marked here as ...
-                will typically be `local_sequence, channel` or
-                `channel, lat, lon`. These dimensions should agree with
-                data_unmasked.
+                will typically be `local_sequence, channel` or `channel, lat, lon`.
+                  These dimensions should agree with data_unmasked.
             data_unmasked: Tensor of shape `batch, mask unit sequence, ...`.
                 Should have same size along mask unit sequence dimension as
                 idx_unmasked. Dimensions beyond the first two, marked here as
                 ... will typically be `local_sequence, channel` or `channel,
                 lat, lon`. These dimensions should agree with data_masked.
         Returns:
-            Tensor: Tensor of same shape as inputs data_masked and
-                data_unmasked. I.e. `batch, mask unit sequence, ...`. Index for
-                the total data composed of the masked and the unmasked part.
+            Tensor of same shape as inputs data_masked and data_unmasked. I.e.
+            `batch, mask unit sequence, ...`. Index for the total data composed
+            of the masked and the unmasked part
         """
         dim: int = idx_masked.ndim
 
-        idx_total = torch.argsort(
-            torch.cat([idx_masked, idx_unmasked], dim=-1), dim=-1
-        )
-        idx_total = idx_total.view(
-            *idx_total.shape, *[1] * (data_unmasked.ndim - dim)
-        )
-        idx_total = idx_total.expand(
-            *idx_total.shape[:dim], *data_unmasked.shape[dim:]
-        )
+        idx_total = torch.argsort(torch.cat([idx_masked, idx_unmasked], dim=-1), dim=-1)
+        idx_total = idx_total.view(*idx_total.shape, *[1] * (data_unmasked.ndim - dim))
+        idx_total = idx_total.expand(*idx_total.shape[:dim], *data_unmasked.shape[dim:])
 
         data = torch.cat([data_masked, data_unmasked], dim=dim - 1)
         data = torch.gather(data, dim=dim - 1, index=idx_total)
 
         return data, idx_total
 
-    def fourier_pos_encoding(self, x_static: Tensor) -> Tensor:
+    def fourier_pos_encoding(self, x_static):
         """
         Args
-            x_static: B x C x H x W. first two channels are lat, and lon
+            x_static: B x C x H x W. first two channels are lat, and lon respectively
         Returns
-            Tensor: Tensor of shape B x E x H x W where E is the embedding
-                dimension.
+            Tensor of shape B x E x H x W where E is the embedding dimension.
         """
 
         # B x C x H x W -> B x 1 x H/P x W/P
-        latitudes_patch = F.avg_pool2d(
-            x_static[:, [0]],
-            kernel_size=self.patch_size_px,
-            stride=self.patch_size_px,
-        )
-        longitudes_patch = F.avg_pool2d(
-            x_static[:, [1]],
-            kernel_size=self.patch_size_px,
-            stride=self.patch_size_px,
-        )
+        latitudes_patch = F.avg_pool2d(x_static[:, [0]], kernel_size=self.patch_size_px, stride=self.patch_size_px)
+        longitudes_patch = F.avg_pool2d(x_static[:, [1]], kernel_size=self.patch_size_px, stride=self.patch_size_px)
 
-        modes = (
-            torch.arange(self.embed_dim // 4, device=x_static.device).view(
-                1, -1, 1, 1
-            )
-            + 1.0
-        )
+        modes = torch.arange(self.embed_dim//4, device=x_static.device).view(1, -1, 1, 1) + 1.
         pos_encoding = torch.cat(
             (
-                torch.sin(latitudes_patch * modes),
-                torch.sin(longitudes_patch * modes),
-                torch.cos(latitudes_patch * modes),
-                torch.cos(longitudes_patch * modes),
+                torch.sin(latitudes_patch*modes),
+                torch.sin(longitudes_patch*modes),
+                torch.cos(latitudes_patch*modes),
+                torch.cos(longitudes_patch*modes),
             ),
-            axis=1,
+            axis=1
         )
 
-        return pos_encoding  # B x E x H/P x W/P
+        return pos_encoding # B x E x H/P x W/P
 
     def time_encoding(self, input_time, lead_time):
-        """
+        '''
         Args:
             input_time: Tensor of shape [batch].
             lead_time: Tensor of shape [batch].
         Returns:
-            Tensor: Tensor of shape [batch, embed_dim, 1, 1]
-        """
+            Tensor of shape [batch, embed_dim, 1, 1]
+        '''
         input_time = self.input_time_embedding(input_time.view(-1, 1, 1, 1))
         lead_time = self.lead_time_embedding(lead_time.view(-1, 1, 1, 1))
 
@@ -1125,7 +1346,7 @@ class PrithviWxC(nn.Module):
                 torch.sin(input_time),
                 torch.sin(lead_time),
             ),
-            axis=3,
+            axis=3
         )
         return time_encoding
 
@@ -1142,7 +1363,7 @@ class PrithviWxC(nn.Module):
 
         x = x.view(
             n_batch,
-            -1,
+            self.embed_dim,
             self.global_shape_mu[0],
             self.local_shape_mu[0],
             self.global_shape_mu[1],
@@ -1160,8 +1381,7 @@ class PrithviWxC(nn.Module):
             x: Tensor in patch space with shape (N, G, L, C*P_0*P_1)
 
         Returns:
-            Tensor: Tensor in lat/lon space
-                (N, C*P_0*P_1, Nlat//P_0, Nlon // P_1)
+            Tensor in lat/lon space (N, C*P_0*P_1, Nlat//P_0, Nlon // P_1)
         """
         n_batch = x.shape[0]
 
@@ -1176,66 +1396,76 @@ class PrithviWxC(nn.Module):
         x = x.permute(0, 5, 1, 3, 2, 4).contiguous()
 
         s = x.shape
-        return x.view(n_batch, -1, s[2] * s[3], s[4] * s[5])
+        return x.view(n_batch, -1, s[2]*s[3], s[4]*s[5])
 
     def forward(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
         """
         Args:
-            batch: Dictionary the following keys::
-
-                'x': Tensor of shape [batch, time, parameter, lat, lon]
-                'y': Tensor of shape [batch, parameter, lat, lon]
-                'static': Tensor of shape [batch, channel_static, lat, lon]
-                'climate': Optional tensor of shape [batch, parameter, lat, lon]
-                'input_time': Tensor of shape [batch]. Or none.
-                'lead_time': Tensor of shape [batch]. Or none.
-
+            batch: Dictionary containing the keys 'x', 'y', 'input_time',
+                'lead_time' and 'static'. The associated torch tensors have the
+                following shapes:
+                x: Tensor of shape [batch, time, parameter, lat, lon]
+                y: Tensor of shape [batch, parameter, lat, lon]
+                static: Tensor of shape [batch, channel_static, lat, lon]
+                climate: Optional tensor of shape [batch, parameter, lat, lon]
+                input_time: Tensor of shape [batch]. Or none.
+                lead_time: Tensor of shape [batch]. Or none.
         Returns:
-            Tensor: Tensor of shape [batch, parameter, lat, lon].
-        """  # noqa: E501
+            Tensor of shape [batch, parameter, lat, lon].
+        """
+        assert batch["x"].shape[2] == self.in_channels
+        assert batch["x"].shape[3] == self.n_lats_px
+        assert batch["x"].shape[4] == self.n_lons_px
+        assert batch["y"].shape[1] == self.in_channels
+        assert batch["y"].shape[2] == self.n_lats_px
+        assert batch["y"].shape[3] == self.n_lons_px
+        if self.positional_encoding == 'fourier':
+            # the first two features (lat, lon) are encoded separately
+            assert batch['static'].shape[1] - 2 == self.in_channels_static, "When setting self.positional_encoding to fourier, the number of static params change in the dataset. So, in the config, reduce num_static_channels (e.g., 4 instead of 7)."
+        else:
+            assert batch['static'].shape[1] == self.in_channels_static
+        assert batch["static"].shape[2] == self.n_lats_px
+        assert batch["static"].shape[3] == self.n_lons_px
+
         x_rescaled = (batch["x"] - self.input_scalers_mu) / (
             self.input_scalers_sigma + self.input_scalers_epsilon
         )
         batch_size = x_rescaled.shape[0]
 
-        if self.positional_encoding == "fourier":
-            x_static_pos = self.fourier_pos_encoding(batch["static"])
-            x_static = (
-                batch["static"][:, 2:] - self.static_input_scalers_mu[:, 3:]
-            ) / (
-                self.static_input_scalers_sigma[:, 3:]
-                + self.static_input_scalers_epsilon
+        if self.positional_encoding == 'fourier':
+            x_static_pos = self.fourier_pos_encoding(batch['static']) # B, embed_dim, lat / patch_size, lon / patch_size
+            x_static = (batch['static'][:, 2:] - self.static_input_scalers_mu[:, 3:]) / ( # The first two channels in batch['static'] are used in positional encoding
+                self.static_input_scalers_sigma[:, 3:] + self.static_input_scalers_epsilon # This translates to the first three channels in 'static_input_scalers_mu'
             )
         else:
             x_static = (batch["static"] - self.static_input_scalers_mu) / (
-                self.static_input_scalers_sigma
-                + self.static_input_scalers_epsilon
+                self.static_input_scalers_sigma + self.static_input_scalers_epsilon
             )
 
         if self.residual == "temporal":
             # We create a residual of same shape as y
-            index = torch.where(
-                batch["lead_time"] > 0, batch["x"].shape[1] - 1, 0
-            )
+            index = torch.where(batch["lead_time"] > 0, batch["x"].shape[1] - 1, 0)
             index = index.view(-1, 1, 1, 1, 1)
             index = index.expand(batch_size, 1, *batch["x"].shape[2:])
             x_hat = torch.gather(batch["x"], dim=1, index=index)
             x_hat = x_hat.squeeze(1)
+            assert (
+                batch["y"].shape == x_hat.shape
+            ), f'Shapes {batch["y"].shape} and {x_hat.shape} do not agree.'
         elif self.residual == "climate":
             climate_scaled = (
                 batch["climate"] - self.input_scalers_mu.view(1, -1, 1, 1)
             ) / (
-                self.input_scalers_sigma.view(1, -1, 1, 1)
-                + self.input_scalers_epsilon
+                self.input_scalers_sigma.view(1, -1, 1, 1) + self.input_scalers_epsilon
             )
 
-        # [batch, time, parameter, lat, lon]
-        # -> [batch, time x parameter, lat, lon]
+        # [batch, time, parameter, lat, lon] -> [batch, time x parameter, lat, lon]
         x_rescaled = x_rescaled.flatten(1, 2)
         # Parameter dropout
         x_rescaled = self.parameter_dropout(x_rescaled)
 
         x_embedded = self.patch_embedding(x_rescaled)
+        assert x_embedded.shape[1] == self.embed_dim
 
         if self.residual == "climate":
             static_embedded = self.patch_embedding_static(
@@ -1243,16 +1473,15 @@ class PrithviWxC(nn.Module):
             )
         else:
             static_embedded = self.patch_embedding_static(x_static)
+        assert static_embedded.shape[1] == self.embed_dim
 
-        if self.positional_encoding == "fourier":
+        if self.positional_encoding == 'fourier':
             static_embedded += x_static_pos
 
         x_embedded = self.to_patching(x_embedded)
         static_embedded = self.to_patching(static_embedded)
 
-        time_encoding = self.time_encoding(
-            batch["input_time"], batch["lead_time"]
-        )
+        time_encoding = self.time_encoding(batch['input_time'], batch['lead_time'])
 
         tokens = x_embedded + static_embedded + time_encoding
 
@@ -1278,8 +1507,7 @@ class PrithviWxC(nn.Module):
         x_encoded = self.encoder(unmasked)
 
         # Generate and position encode the mask tokens
-        # [1, 1, 1, embed_dim]
-        # -> [batch, global_seq_masked, local seq, embed_dim]
+        # (1, 1, 1, embed_dim) -> (batch, global_seq_masked, local seq, embed_dim)
         mask_view = (*indices_masked.shape, *[1] * (tokens.ndim - maskdim))
         masking = self.mask_token.repeat(*static_embedded.shape[:3], 1)
         masked = masking + static_embedded
@@ -1297,15 +1525,21 @@ class PrithviWxC(nn.Module):
 
         x_decoded = self.decoder(recon)
 
-        # Output: [batch, global sequence, local sequence,
-        #          in_channels * patch_size[0] * patch_size[1]]
+        # Output: (batch, global sequence, local sequence, in_channels * patch_size[0] * patch_size[1])
         x_unembed = self.unembed(x_decoded)
 
-        # Reshape to [batch, global_lat, global_lon, local_lat, local_lon,
-        #             in_channels * patch_size[0] * patch_size[1]]
+        # Reshape to (batch, global_lat, global_lon, local_lat, local_lon, in_channels * patch_size[0] * patch_size[1])
+        assert x_unembed.shape[0] == batch_size
+        assert x_unembed.shape[1] == self.global_shape_mu[0] * self.global_shape_mu[1]
+        assert x_unembed.shape[2] == self.local_shape_mu[0] * self.local_shape_mu[1]
+        assert (
+            x_unembed.shape[3]
+            == self.in_channels * self.patch_size_px[0] * self.patch_size_px[1]
+        )
+
         x_out = self.from_patching(x_unembed)
 
-        # Pixel shuffle to [batch, in_channels, lat, lon]
+        # Pixel shuffle to (batch, in_channels, lat, lon)
         x_out = F.pixel_shuffle(x_out, self.patch_size_px[0])
 
         if self.residual == "temporal":
@@ -1313,9 +1547,8 @@ class PrithviWxC(nn.Module):
         elif self.residual == "climate":
             x_out = self.output_scalers * x_out + batch["climate"]
         elif self.residual == "none":
-            x_out = (
-                self.output_scalers * x_out
-                + self.input_scalers_mu.reshape(1, -1, 1, 1)
+            x_out = self.output_scalers * x_out + self.input_scalers_mu.reshape(
+                1, -1, 1, 1
             )
 
         return x_out

@@ -432,6 +432,7 @@ def get_model(config: ExperimentConfig) -> torch.nn.Module:
         patch_size_px = config.model.token_size,
         mask_unit_size_px = config.mask_unit_size,
         mask_ratio_inputs = config.mask_ratio_inputs,
+        mask_ratio_targets = 0.0,
         embed_dim = config.model.embed_dim,
         n_blocks_encoder = config.model.n_blocks_encoder,
         n_blocks_decoder = config.model.n_blocks_decoder,
@@ -528,7 +529,7 @@ def make_forecast(
 
 def validate_forecast(input_hashes: dict, rmse: xr.Dataset):
 
-    validation_object = Path("validation_rmse.nc")
+    validation_object = Path("data/validation/validation_rmse.nc")
     if not validation_object.exists():
         rmse.to_netcdf(validation_object, engine="h5netcdf")
     else:
@@ -536,7 +537,7 @@ def validate_forecast(input_hashes: dict, rmse: xr.Dataset):
         with pd.option_context('display.max_rows', None, "display.max_columns", 9):
             validated_rmses = validate_rmse(rmse, reference_rmse)
 
-    validation_object = Path("validation_data.json")
+    validation_object = Path("data/validation/validation_data.json")
     if not validation_object.exists():
         with validation_object.open("w") as fp:
             json.dump(input_hashes, fp)
