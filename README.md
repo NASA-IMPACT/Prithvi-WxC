@@ -10,12 +10,9 @@ The previous version of this repo contained a number of bugs that led to incorre
 
 ## Architecture overview: A scalable and flexible vision transformer
 
-Prithvi WxC, a scalable 2D vision transformer inspired by Hiera, overcomes architectural limitations to handle non-rectangular data topologies. It leverages a pretraining strategy with attention and fine-tuning with convolutions, drawing from both Hiera and MaxViT approaches.
-
-Our data, structured into windows, takes the shape (batch, windows, tokens, features). We alternate between **local attention** (within a window) and **global attention** (across windows), akin to modulo masking. This is implemented by transposing dimensions between transformer layers. Attention acts on the third dimension, the second being part of the batch. Masking can target entire windows or individual tokens, the latter disrupting global connections between the same token across windows. See the figure for illustration:
+Prithvi WxC is at its core a scalable 2D vision transformer. The architecture is designed to allow for memory-efficient masked pretraining. It draws inspiration from both Hiera, MaxViT and SWIN transformers. Inputs, structured into windows, take the shape (batch, windows, tokens, features). We alternate between **local attention** (within a window) and **global attention** (across windows). This is implemented by transposing dimensions between transformer layers. Attention acts on the third dimension, the second being part of the batch. When data becomes dense -- i.e. in the absence of masking -- it is possible to add SWIN-like shifts to the local attention layers. See the figure for illustration:
 
 ![arch_main](docs/arch_main.png)
-
 
 ## Fine-tuning applications
 
