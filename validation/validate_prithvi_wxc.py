@@ -476,8 +476,6 @@ def make_forecast(
     rmse = []
     loss = None
 
-    return input_hashes, rmse, 0.
-
     print("Starting validation run.")
 
     dev_batch = {k: v.to("cuda") for k, v in batch.items()}
@@ -530,13 +528,13 @@ def make_forecast(
 
 def validate_forecast(input_hashes: dict, rmse: xr.Dataset):
 
-    #validation_object = Path("validation_rmse.nc")
-    #if not validation_object.exists():
-    #    rmse.to_netcdf(validation_object, engine="h5netcdf")
-    #else:
-    #    reference_rmse = xr.open_dataset(validation_object)
-    #    with pd.option_context('display.max_rows', None, "display.max_columns", 9):
-    #        validated_rmses = validate_rmse(rmse, reference_rmse)
+    validation_object = Path("validation_rmse.nc")
+    if not validation_object.exists():
+        rmse.to_netcdf(validation_object, engine="h5netcdf")
+    else:
+        reference_rmse = xr.open_dataset(validation_object)
+        with pd.option_context('display.max_rows', None, "display.max_columns", 9):
+            validated_rmses = validate_rmse(rmse, reference_rmse)
 
     validation_object = Path("validation_data.json")
     if not validation_object.exists():
@@ -560,7 +558,7 @@ def validation_run(
     assert len(validation_loader) == 1, "Expecting a single validation sample."
     assert rollout == 20, "Expecting 20 rollout steps."
 
-    lats = torch.from_numpy(lats.reshape(1, 1, lats.shape[0], 1))#.to("cuda")
+    lats = torch.from_numpy(lats.reshape(1, 1, lats.shape[0], 1)).to("cuda")
     lats = torch.pi * lats / 180.
     weights = torch.cos(lats).expand(1, len(variable_names), 360, 576)
 
@@ -628,7 +626,7 @@ def main(config: ExperimentConfig) -> None:
     if "model_state" in state_dict:
         state_dict = state_dict["model_state"]
     model.load_state_dict(state_dict, strict=True)
-    #model = model.to("cuda")
+    model = model.to("cuda")
 
     # Loss functions
     lats = np.linspace(-90, 90, 361)
