@@ -2,6 +2,12 @@
 
 This repository contains the code of the Prithvi WxC foundation model as well as a basic zero-shot examples for testing and illustration. For fine-tuning applications please refer to task-specific repositories listed [below](https://github.com/NASA-IMPACT/Prithvi-WxC?tab=readme-ov-file#fine-tuning-applications).
 
+## Updates
+
+### March 25, 2025
+
+The previous version of this repo contained a number of bugs that led to incorrect model outputs and worse performance than in our paper. We just addressed these issues. In particular, there is validation code below that lets you verify whether your particular platform and version of the code obtains results comparable to ours. (See step 3 under [Getting started](#getting-started).)
+
 ## Architecture overview: A scalable and flexible vision transformer
 
 Prithvi WxC, a scalable 2D vision transformer inspired by Hiera, overcomes architectural limitations to handle non-rectangular data topologies. It leverages a pretraining strategy with attention and fine-tuning with convolutions, drawing from both Hiera and MaxViT approaches.
