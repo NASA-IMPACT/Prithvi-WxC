@@ -32,7 +32,11 @@ Beyond these there are zero-shot applications in masked reconstruction and forec
    cd Prithvi-WxC
    pip install '.[examples]'
    ```
-3. Run one of the notebooks in the `examples` directory:
+3. Validate that the model behaves as expected. For that run
+   ```
+   python -m validation.validate_prithvi_wxc -c validation/config.yaml
+   ```
+4. Run one of the notebooks in the `examples` directory:
    - [Basic inference](examples/PrithviWxC_inference.ipynb)
    - [Rollout inference](examples/PrithviWxC_rollout.ipynb)
    

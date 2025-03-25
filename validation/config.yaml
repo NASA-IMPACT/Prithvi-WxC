@@ -1,0 +1,73 @@
+data:
+    data_path_surface: data/merra-2
+    data_path_vertical: data/merra-2
+    climatology_path_surface: data/climatology
+    climatology_path_vertical: data/climatology
+    time_range_train: ['1980-01-01T00:00:00', '2019-12-31T23:59:59']
+    time_range_valid: ['2020-01-01T00:00:00', '2020-01-06T06:00:00']
+
+    # Platform independent config
+    input_size_lat: 361
+    input_size_lon: 576
+    surface_vars: [EFLUX, GWETROOT, HFLUX, LAI, LWGAB, LWGEM, LWTUP, PS, QV2M, SLP, SWGNT, SWTNT, T2M, TQI, TQL, TQV, TS, U10M, V10M, Z0M]
+    static_surface_vars: [FRACI, FRLAND, FROCEAN, PHIS]
+    vertical_vars: [CLOUD, H, OMEGA, PL, QI, QL, QV, T, U, V]
+    levels: [34.0, 39.0, 41.0, 43.0, 44.0, 45.0, 48.0, 51.0, 53.0, 56.0, 63.0, 68.0, 71.0, 72.0]
+    roll_longitudes_train: 0
+    roll_longitudes_valid: 0
+    lead_time: +120
+    input_time: -6
+    # Processing
+    padding:
+      level:
+        - 0
+        - 0
+      lat:
+        - 0
+        - -1
+      lon:
+        - 0
+        - 0
+model:
+  input_scalers_surface_path: data/climatology/musigma_surface.nc
+  input_scalers_vertical_path: data/climatology/musigma_vertical.nc
+  output_scalers_surface_path: data/climatology/anomaly_variance_surface.nc
+  output_scalers_vertical_path: data/climatology/anomaly_variance_vertical.nc
+
+  # Platform independent config
+  num_static_channels: 4
+  embed_dim: 2560
+  token_size:
+    - 2
+    - 2
+  n_blocks_encoder: 12
+  n_blocks_decoder: 2
+  mlp_multiplier: 4
+  n_heads: 16
+  dropout_rate: 0.0
+  drop_path: 0.0
+  parameter_dropout: 0.0
+  # Accepted values: global, local, both
+  masking_mode: both
+  # Accepted values: temporal, climate, none
+  residual: climate
+  decoder_shift: true
+  # Accepted values: absolute, fourier. When setting to fourier, the dataset changes, so change num_static_channels above (e.g., from 7 to 4)
+  positional_encoding: fourier
+  # Do we want encoder/decoder transformer checkpointing? Slower but reduces memory usage
+  # Format: List of transformer blocks (after which to checkpoint).
+  # E.g. `[]` for no checkpointing, `[3, 7]` for checkpointing after the fourth and eight transformers.
+  # Keep in mind that the model has 2*n+1 transformers.
+  checkpoint_encoder: [] #[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+  checkpoint_decoder: [] #[1, 2, 3, 4]
+  rollout: true
+
+# Platform independent config
+mask_unit_size:
+  - 30
+  - 32
+mask_ratio_inputs: 0.0
+# Data loading options
+batch_size: 1
+dl_num_workers: 1
+dl_prefetch_size: 1
