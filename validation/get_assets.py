@@ -7,28 +7,28 @@ def get_data():
     """
     surf_dir = Path("./merra-2")
     snapshot_download(
-        repo_id="Prithvi-WxC/prithvi.wxc.2300m.v1",
+        repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M",
         allow_patterns="merra-2/MERRA2_sfc_2020010[1-6].nc",
         local_dir="data",
     )
 
     vert_dir = Path("./merra-2")
     snapshot_download(
-        repo_id="Prithvi-WxC/prithvi.wxc.2300m.v1",
+        repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M",
         allow_patterns="merra-2/MERRA_pres_2020010[1-6].nc",
         local_dir="data",
     )
 
     surf_clim_dir = Path("./climatology")
     snapshot_download(
-        repo_id="Prithvi-WxC/prithvi.wxc.2300m.v1",
+        repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M",
         allow_patterns="climatology/climate_surface_doy00[1-6]*.nc",
         local_dir="data",
     )
 
     vert_clim_dir = Path("./climatology")
     snapshot_download(
-        repo_id="Prithvi-WxC/prithvi.wxc.2300m.v1",
+        repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M",
         allow_patterns="climatology/climate_vertical_doy00[1-6]*.nc",
         local_dir="data",
     )
@@ -41,6 +41,13 @@ def get_model_data():
         repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout",
         filename="config.yaml",
         local_dir="data",
+    )
+    
+    weights_path = Path("./weights/prithvi.wxc.rollout.2300m.v1.pt")
+    hf_hub_download(
+        repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout",
+        filename=weights_path.name,
+        local_dir="data/weights",
     )
 
     surf_in_scal_path = Path("./climatology/musigma_surface.nc")
@@ -69,11 +76,4 @@ def get_model_data():
         repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M",
         filename=f"climatology/{vert_out_scal_path.name}",
         local_dir="data",
-    )
-
-    weights_path = Path("./weights/prithvi.wxc.rollout.2300m.v1.pt")
-    hf_hub_download(
-        repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout",
-        filename=weights_path.name,
-        local_dir="data/weights",
     )

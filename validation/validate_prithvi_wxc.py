@@ -443,6 +443,7 @@ def get_model(config: ExperimentConfig) -> torch.nn.Module:
         parameter_dropout = config.model.parameter_dropout,
         residual = config.model.residual,
         masking_mode = config.model.masking_mode,
+        encoder_shifting = config.model.encoder_shift,
         decoder_shifting = config.model.decoder_shift,
         positional_encoding = config.model.__dict__.get('positional_encoding', 'absolute'),
         checkpoint_encoder = [int(i) for i in config.model.checkpoint_encoder],
