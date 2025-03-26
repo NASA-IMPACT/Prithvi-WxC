@@ -888,6 +888,7 @@ class PrithviWxC(nn.Module):
         residual: str,
         masking_mode: str,
         positional_encoding: str,
+        encoder_shifting: bool = False,
         decoder_shifting: bool = False,
         checkpoint_encoder: list[int]=[],
         checkpoint_decoder: list[int]=[],
@@ -938,6 +939,7 @@ class PrithviWxC(nn.Module):
             checkpoint_decoder: List of integers controlling if gradient checkpointing is used on decoder.
                 Format: See `checkpoint_encoder`.
             masking_mode: The type of masking to use {'global', 'local', 'both'}
+            encoder_shifting: Whether to use swin shifting in the encoder.
             decoder_shifting: Whether to use swin shifting in the decoder.
         """
         super().__init__()
@@ -962,6 +964,7 @@ class PrithviWxC(nn.Module):
         self.dropout = dropout
         self.drop_path = drop_path
         self.residual = residual
+        self._encoder_shift = encoder_shifting
         self._decoder_shift = decoder_shifting
         self.positional_encoding = positional_encoding
         self._checkpoint_encoder = checkpoint_encoder
@@ -1038,13 +1041,16 @@ class PrithviWxC(nn.Module):
         self._nlocal_mu = np.prod(self.local_shape_mu)
         self._local_idx = torch.arange(self._nlocal_mu)
 
-        self.encoder_shifter = e_shifter = SWINShiftNoBuffer(
-            self.mask_unit_size_px,
-            self.global_shape_mu,
-            self.local_shape_mu,
-            self.patch_size_px,
-            n_context_tokens=0,
-        )
+        if self._encoder_shift:
+            self.encoder_shifter = e_shifter = SWINShiftNoBuffer(
+                self.mask_unit_size_px,
+                self.global_shape_mu,
+                self.local_shape_mu,
+                self.patch_size_px,
+                n_context_tokens=0,
+            )
+        else:
+            self.encoder_shifter = e_shifter = None
         self.encoder = PrithviWxCEncoderDecoder(
             embed_dim=embed_dim,
             n_blocks=n_blocks_encoder,

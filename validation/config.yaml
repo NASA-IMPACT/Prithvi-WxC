@@ -51,6 +51,7 @@ model:
   masking_mode: both
   # Accepted values: temporal, climate, none
   residual: climate
+  encoder_shift: true
   decoder_shift: true
   # Accepted values: absolute, fourier. When setting to fourier, the dataset changes, so change num_static_channels above (e.g., from 7 to 4)
   positional_encoding: fourier
