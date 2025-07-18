@@ -1,6 +1,6 @@
 # Prithvi WxC: Foundation model for weather and climate
 
-This repository contains the code of the Prithvi WxC foundation model as well as a basic zero-shot examples for testing and illustration. For fine-tuning applications please refer to task-specific repositories listed [below](https://github.com/NASA-IMPACT/Prithvi-WxC?tab=readme-ov-file#fine-tuning-applications).
+This repository contains the code of the Prithvi WxC foundation model as well as basic zero-shot examples for testing and illustration. For fine-tuning applications please refer to task-specific repositories listed [below](https://github.com/NASA-IMPACT/Prithvi-WxC?tab=readme-ov-file#fine-tuning-applications).
 
 ## Updates
 
@@ -21,7 +21,7 @@ We have fine-tuned the model to a number of downstream tasks. See the paper as w
 | Application                  | Dataset     | Repository                         |
 | ---------------------------- | ----------- | ---------------------------------- |
 | Downscaling                  | MERRA-2     | https://github.com/IBM/granite-wxc |
-|                              | EURO-CORDEX | https://github.com/IBM/granite-wxc |
+| Downscaling                  | EURO-CORDEX | https://github.com/IBM/granite-wxc |
 | Gravity wave parametrization | ERA5        | https://github.com/NASA-IMPACT/gravity-wave-finetuning |
 
 Beyond these there are zero-shot applications in masked reconstruction and forecasting.
