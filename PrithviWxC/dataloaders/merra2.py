@@ -13,6 +13,13 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
+from ..definitions import (
+    VALID_VERTICAL_VARS,
+    VALID_SURFACE_VARS,
+    VALID_STATIC_SURFACE_VARS,
+    VALID_LEVELS
+)
+
 
 def preproc(batch: list[dict], padding: dict[tuple[int]]) -> dict[str, Tensor]:
     """Prepressing function for MERRA2 Dataset
@@ -397,61 +404,6 @@ class Merra2Dataset(Dataset):
         That is, the outer list iterates over timestamps (init times), the
         inner over lead times. Only valid entries are stored.
     """
-
-    valid_vertical_vars = [
-        "CLOUD",
-        "H",
-        "OMEGA",
-        "PL",
-        "QI",
-        "QL",
-        "QV",
-        "T",
-        "U",
-        "V",
-    ]
-    valid_surface_vars = [
-        "EFLUX",
-        "GWETROOT",
-        "HFLUX",
-        "LAI",
-        "LWGAB",
-        "LWGEM",
-        "LWTUP",
-        "PRECTOT",
-        "PS",
-        "QV2M",
-        "SLP",
-        "SWGNT",
-        "SWTNT",
-        "T2M",
-        "TQI",
-        "TQL",
-        "TQV",
-        "TS",
-        "U10M",
-        "V10M",
-        "Z0M",
-    ]
-    valid_static_surface_vars = ["FRACI", "FRLAND", "FROCEAN", "PHIS"]
-
-    valid_levels = [
-        34.0,
-        39.0,
-        41.0,
-        43.0,
-        44.0,
-        45.0,
-        48.0,
-        51.0,
-        53.0,
-        56.0,
-        63.0,
-        68.0,
-        71.0,
-        72.0,
-    ]
-
     timedelta_input = pd.to_timedelta(3, unit="h")
 
     def __init__(
@@ -506,10 +458,10 @@ class Merra2Dataset(Dataset):
         self.input_times = input_times
         self._roll_longitudes = list(range(roll_longitudes + 1))
 
-        self._uvars = vertical_vars or self.valid_vertical_vars
-        self._level = levels or self.valid_levels
-        self._svars = surface_vars or self.valid_surface_vars
-        self._sstat = static_surface_vars or self.valid_static_surface_vars
+        self._uvars = vertical_vars or VALID_VERTICAL_VARS
+        self._level = levels or VALID_LEVELS
+        self._svars = surface_vars or VALID_SURFACE_VARS
+        self._sstat = static_surface_vars or VALID_STATIC_SURFACE_VARS
         self._nuvars = len(self._uvars)
         self._nlevel = len(self._level)
         self._nsvars = len(self._svars)
@@ -553,16 +505,16 @@ class Merra2Dataset(Dataset):
                 "`climatology_path_vertical` should be None."
             )
 
-        if not set(self._svars).issubset(set(self.valid_surface_vars)):
+        if not set(self._svars).issubset(set(VALID_SURFACE_VARS)):
             raise ValueError("Invalid surface variable.")
 
-        if not set(self._sstat).issubset(set(self.valid_static_surface_vars)):
+        if not set(self._sstat).issubset(set(VALID_STATIC_SURFACE_VARS)):
             raise ValueError("Invalid static surface variable.")
 
-        if not set(self._uvars).issubset(set(self.valid_vertical_vars)):
+        if not set(self._uvars).issubset(set(VALID_VERTICAL_VARS)):
             raise ValueError("Inalid vertical variable.")
 
-        if not set(self._level).issubset(set(self.valid_levels)):
+        if not set(self._level).issubset(set(VALID_LEVELS)):
             raise ValueError("Invalid level.")
 
     @staticmethod

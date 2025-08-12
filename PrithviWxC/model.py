@@ -1454,3 +1454,183 @@ class PrithviWxC(nn.Module):
             )
 
         return x_out
+
+
+def masked_inference(
+        model,
+        batch: dict[str, torch.Tensor],
+        mask_global: Optional[torch.Tensor] = None,
+        mask_local: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """
+    Perform masked inference with Prithvi-WxC model
+
+    Args:
+        model: The PrithviWxC model to perform the inference with.
+        batch: Dictionary containing the keys 'x', 'y', 'input_time',
+            'lead_time' and 'static'. The associated torch tensors have the
+            following shapes:
+            x: Tensor of shape [batch, time, parameter, lat, lon]
+            y: Tensor of shape [batch, parameter, lat, lon]
+            static: Tensor of shape [batch, channel_static, lat, lon]
+            climate: Optional tensor of shape [batch, parameter, lat, lon]
+            input_time: Tensor of shape [batch]. Or none.
+            lead_time: Tensor of shape [batch]. Or none.
+        mask_global: A 2D tensor of shape [n_lats_px / mask_unit_size_px[0], n_lons_px / patch_size_px[1]]
+            identifying the global patches to mask.
+        mask_local: A 2D tensor of shape [mask_unit_size_px[0] / patch_size_px[0], mask_unit_size_px[1] / patch_size_px[1]]
+            identifying the global patches to mask.
+    Returns:
+        Tensor of shape [batch, parameter, lat, lon].
+    """
+    assert batch["x"].shape[2] == model.in_channels
+    assert batch["x"].shape[3] == model.n_lats_px
+    assert batch["x"].shape[4] == model.n_lons_px
+    assert batch["y"].shape[1] == model.in_channels
+    assert batch["y"].shape[2] == model.n_lats_px
+    assert batch["y"].shape[3] == model.n_lons_px
+    if model.positional_encoding == 'fourier':
+        # the first two features (lat, lon) are encoded separately
+        assert batch['static'].shape[1] - 2 == model.in_channels_static, "When setting model.positional_encoding to fourier, the number of static params change in the dataset. So, in the config, reduce num_static_channels (e.g., 4 instead of 7)."
+    else:
+        assert batch['static'].shape[1] == model.in_channels_static
+    assert batch["static"].shape[2] == model.n_lats_px
+    assert batch["static"].shape[3] == model.n_lons_px
+
+    x_rescaled = (batch["x"] - model.input_scalers_mu) / (
+        model.input_scalers_sigma + model.input_scalers_epsilon
+    )
+    batch_size = x_rescaled.shape[0]
+
+    if model.positional_encoding == 'fourier':
+        x_static_pos = model.fourier_pos_encoding(batch['static']) # B, embed_dim, lat / patch_size, lon / patch_size
+        x_static = (batch['static'][:, 2:] - model.static_input_scalers_mu[:, 3:]) / ( # The first two channels in batch['static'] are used in positional encoding
+            model.static_input_scalers_sigma[:, 3:] + model.static_input_scalers_epsilon # This translates to the first three channels in 'static_input_scalers_mu'
+        )
+    else:
+        x_static = (batch["static"] - model.static_input_scalers_mu) / (
+            model.static_input_scalers_sigma + model.static_input_scalers_epsilon
+        )
+
+    if model.residual == "temporal":
+        # We create a residual of same shape as y
+        index = torch.where(batch["lead_time"] > 0, batch["x"].shape[1] - 1, 0)
+        index = index.view(-1, 1, 1, 1, 1)
+        index = index.expand(batch_size, 1, *batch["x"].shape[2:])
+        x_hat = torch.gather(batch["x"], dim=1, index=index)
+        x_hat = x_hat.squeeze(1)
+        assert (
+            batch["y"].shape == x_hat.shape
+        ), f'Shapes {batch["y"].shape} and {x_hat.shape} do not agree.'
+    elif model.residual == "climate":
+        climate_scaled = (
+            batch["climate"] - model.input_scalers_mu.view(1, -1, 1, 1)
+        ) / (
+            model.input_scalers_sigma.view(1, -1, 1, 1) + model.input_scalers_epsilon
+        )
+
+    # [batch, time, parameter, lat, lon] -> [batch, time x parameter, lat, lon]
+    x_rescaled = x_rescaled.flatten(1, 2)
+    # Parameter dropout
+    x_rescaled = model.parameter_dropout(x_rescaled)
+
+    x_embedded = model.patch_embedding(x_rescaled)
+    assert x_embedded.shape[1] == model.embed_dim
+
+    if model.residual == "climate":
+        static_embedded = model.patch_embedding_static(
+            torch.cat((x_static, climate_scaled), dim=1)
+        )
+    else:
+        static_embedded = model.patch_embedding_static(x_static)
+    assert static_embedded.shape[1] == model.embed_dim
+
+    if model.positional_encoding == 'fourier':
+        static_embedded += x_static_pos
+
+    x_embedded = model.to_patching(x_embedded)
+    static_embedded = model.to_patching(static_embedded)
+
+    time_encoding = model.time_encoding(batch['input_time'], batch['lead_time'])
+
+    tokens = x_embedded + static_embedded + time_encoding
+
+    if mask_global is not None:
+        indices_masked = torch.where(mask_global.flatten())[0]
+        indices_masked = torch.repeat_interleave(indices_masked[None], tokens.shape[0], dim=0)
+        indices_unmasked = torch.where(~mask_global.flatten())[0]
+        indices_unmasked = torch.repeat_interleave(indices_unmasked[None], tokens.shape[0], dim=0)
+    elif mask_local is not None:
+        indices_masked = torch.where(mask_local.flatten())[0]
+        indices_masked = indices_masked[None, None].expand(tokens.shape[0], tokens.shape[1], -1)
+        indices_unmasked = torch.where(~mask_local.flatten())[0]
+        indices_unmasked = indices_unmasked[None, None].expand(tokens.shape[0], tokens.shape[1], -1)
+        print(indices_unmasked.shape)
+    else:
+        mask_global = torch.zeros(model.global_shape_mu, dtype=torch.bool)
+        indices_masked = torch.where(mask_global.flatten())[0]
+        indices_masked = torch.repeat_interleave(indices_masked[None], tokens.shape[0], dim=0)
+        indices_unmasked = torch.where(~mask_global.flatten())[0]
+        indices_unmasked = torch.repeat_interleave(indices_unmasked[None], tokens.shape[0], dim=0)
+
+    maskdim: int = indices_masked.ndim
+
+    # Unmasking
+    unmask_view = (*indices_unmasked.shape, *[1] * (tokens.ndim - maskdim))
+    unmasked = torch.gather(
+        tokens,
+        dim=maskdim - 1,
+        index=indices_unmasked.view(*unmask_view).expand(
+            *indices_unmasked.shape, *tokens.shape[maskdim:]
+        ),
+    )
+
+    # Encoder
+    x_encoded = model.encoder(unmasked)
+
+    # Generate and position encode the mask tokens
+    # (1, 1, 1, embed_dim) -> (batch, global_seq_masked, local seq, embed_dim)
+    mask_view = (*indices_masked.shape, *[1] * (tokens.ndim - maskdim))
+    masking = model.mask_token.repeat(*static_embedded.shape[:3], 1)
+    masked = masking + static_embedded
+    masked = torch.gather(
+        masked,
+        dim=maskdim - 1,
+        index=indices_masked.view(*mask_view).expand(
+            *indices_masked.shape, *tokens.shape[maskdim:]
+        ),
+    )
+
+    recon, _ = model.reconstruct_batch(
+        indices_masked, indices_unmasked, masked, x_encoded
+    )
+
+    x_decoded = model.decoder(recon)
+
+    # Output: (batch, global sequence, local sequence, in_channels * patch_size[0] * patch_size[1])
+    x_unembed = model.unembed(x_decoded)
+
+    # Reshape to (batch, global_lat, global_lon, local_lat, local_lon, in_channels * patch_size[0] * patch_size[1])
+    assert x_unembed.shape[0] == batch_size
+    assert x_unembed.shape[1] == model.global_shape_mu[0] * model.global_shape_mu[1]
+    assert x_unembed.shape[2] == model.local_shape_mu[0] * model.local_shape_mu[1]
+    assert (
+        x_unembed.shape[3]
+        == model.in_channels * model.patch_size_px[0] * model.patch_size_px[1]
+    )
+
+    x_out = model.from_patching(x_unembed)
+
+    # Pixel shuffle to (batch, in_channels, lat, lon)
+    x_out = F.pixel_shuffle(x_out, model.patch_size_px[0])
+
+    if model.residual == "temporal":
+        x_out = model.output_scalers * x_out + x_hat
+    elif model.residual == "climate":
+        x_out = model.output_scalers * x_out + batch["climate"]
+    elif model.residual == "none":
+        x_out = model.output_scalers * x_out + model.input_scalers_mu.reshape(
+            1, -1, 1, 1
+        )
+
+    return x_out
