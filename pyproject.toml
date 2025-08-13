@@ -12,6 +12,7 @@ authors = [
     {name = "Shraddha Singh"},
     {name = "Johannes Jakubik"},
     {name = "Julian Kuehnert"},
+    {name = "Simon Pfreundschuh"},
 ]
 classifiers = [
 ]
@@ -27,6 +28,10 @@ dependencies = [
     "xarray >= 2024.3.0",
     "h5netcdf >= 1.3.0",
     "pyyaml ~= 6.0",
+    "requests",
+    "requests-cache",
+    "scipy",
+    "tqdm",
     "huggingface_hub >= 0.25",
 ]
 

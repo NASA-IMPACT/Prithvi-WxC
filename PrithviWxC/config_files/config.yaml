@@ -1,0 +1,58 @@
+surface_vars:
+- EFLUX
+- GWETROOT
+- HFLUX
+- LAI
+- LWGAB
+- LWGEM
+- LWTUP
+- PS
+- QV2M
+- SLP
+- SWGNT
+- SWTNT
+- T2M
+- TQI
+- TQL
+- TQV
+- TS
+- U10M
+- V10M
+- Z0M
+static_surface_vars:
+- FRACI
+- FRLAND
+- FROCEAN
+- PHIS
+vertical_vars:
+- CLOUD
+- H
+- OMEGA
+- PL
+- QI
+- QL
+- QV
+- T
+- U
+- V
+levels:
+- 34.0
+- 39.0
+- 41.0
+- 43.0
+- 44.0
+- 45.0
+- 48.0
+- 51.0
+- 53.0
+- 56.0
+- 63.0
+- 68.0
+- 71.0
+- 72.0
+
+residual: "climate"
+masking_mode: "both"
+encoder_shifting: false
+decoder_shifting: true
+positional_encoding: "fourier"
