@@ -525,7 +525,7 @@ def get_prithvi_wxc_input(
         all_steps = list(input_times) + list(output_times)
 
         LOGGER.info("Downloading MERRA-2 files.")
-        merra_files = download_merra_files(all_steps, download_dir)
+        merra_files = download_merra_files(all_steps, download_dir / "raw")
 
         days = [time.astype("datetime64[s]").item() for time in all_steps]
         days = list(set([datetime(year=day.year, month=day.month, day=day.day) for day in days]))
@@ -542,8 +542,8 @@ def get_prithvi_wxc_input(
 
     LOGGER.info("Downloading climatology files.")
     get_prithvi_wxc_climatology(
-        output_times,
-        input_data_dir
+        input_times + list(output_times),
+        input_data_dir / "../climatology"
     )
 
 
@@ -576,7 +576,7 @@ def download_model_config(
         )
 
     return hf_hub_download(
-        repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M",
+        repo_id=repo_id,
         filename="config.yaml",
         local_dir=download_dir
     )
@@ -623,7 +623,7 @@ def download_model_weights(
 
     filename = WEIGHT_FILE_NAMES.get(config_name, None)
     return hf_hub_download(
-        repo_id="ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M",
+        repo_id=repo_id,
         filename=filename,
         local_dir=download_dir
     )
