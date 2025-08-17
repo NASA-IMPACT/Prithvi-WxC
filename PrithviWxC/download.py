@@ -182,7 +182,13 @@ def download_merra_file(
     destination = destination / filename
 
     if not force and destination.exists():
-        return destination
+
+        try:
+            data = xr.open_dataset(destination)
+            data.close()
+            return destination
+        except Exception:
+            destination.unlink()
 
     if credentials is None:
         auth = get_credentials()
