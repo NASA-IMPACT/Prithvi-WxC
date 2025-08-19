@@ -13,6 +13,7 @@ import torch
 import yaml
 
 from .model import PrithviWxC
+from .download import download_model_config, get_prithvi_wxc_scaling_factors, download_model_weights
 from .dataloaders.merra2 import input_scalers, static_input_scalers, output_scalers
 
 
@@ -89,42 +90,68 @@ class PrithviWxCConfig:
 
 CONFIG_PATH = resources.files("PrithviWxC.config_files")
 
-SMALL = PrithviWxCConfig(**yaml.safe_load(open(CONFIG_PATH.joinpath("small.yml"))))
+CONFIG = yaml.safe_load(open(CONFIG_PATH.joinpath("config.yaml")))
 
-LARGE = PrithviWxCConfig(**yaml.safe_load(open(CONFIG_PATH.joinpath("large.yml"))))
 
-LARGE_ROLLOUT = PrithviWxCConfig(**yaml.safe_load(open(CONFIG_PATH.joinpath("large_rollout.yml"))))
+def get_model_config(
+        config_name: str,
+        data_dir: Path
+) -> PrithviWxCConfig:
+    """
+    Download and load model configuration for one of the pre-trained Prithvi-WxC models.
+
+    Args:
+        config_name: The name of the configuration. Should be one of 'small', 'large', 'large_rollout'.
+        data_dir:
+
+    Return:
+        A PrithviWxCConfig holding the model configuration.
+    """
+    if config_name == "small":
+        return PrithviWxCConfig(**yaml.safe_load(open(CONFIG_PATH.joinpath("small.yaml"))))
+
+    data_dir = Path(data_dir)
+    config = yaml.safe_load(open(download_model_config(config_name, data_dir / "weights")))
+    config = config["params"]
+    config.update(CONFIG)
+
+    return PrithviWxCConfig(**config)
 
 
 def load_model(
-        config: str,
-        scaling_factor_dir: Path,
-        weights: Optional[Path] = None
+        config_name: str,
+        data_dir: Path,
+        load_weights: bool = True
 ) -> PrithviWxC:
     """
     Load Prithvi-WxC model.
 
     Args:
-        config: Name of the model configuration "large" or "small".
-        scaling_factor_dir: The path containing the scaling factors.
-        weights: Optional path pointing to the pre-trained weights to load.
+        config_name: Name of the model configuration "large" or "small".
+        data_dir: The path to download and read scaling factors and model weights from.
+        load_weights: If 'True', will download and load pre-trained weights.
 
-    Retur
+    Return:
+        The loaded Prithvi-WxC model.
     """
-    if not config.upper() in ["SMALL", "LARGE", "LARGE_ROLLOUT"]:
+    if not config_name.upper() in ["SMALL", "LARGE", "LARGE_ROLLOUT"]:
         raise ValueError(
             "'config' must be one of ['SMALL', 'LARGE', 'LARGE_ROLLOUT']"
         )
-    args = asdict(globals().get(config.upper()))
+    data_dir = Path(data_dir)
+
+    config = get_model_config(config_name, data_dir)
+    args = asdict(config)
     surface_vars = args.pop("surface_vars")
     static_surface_vars = args.pop("static_surface_vars")
     vertical_vars = args.pop("vertical_vars")
     levels = args.pop("levels")
 
-    surf_in_scal_path = scaling_factor_dir / "climatology" / "musigma_surface.nc"
-    vert_in_scal_path = scaling_factor_dir / "climatology" / "musigma_vertical.nc"
-    surf_out_scal_path = scaling_factor_dir / "climatology" / "anomaly_variance_surface.nc"
-    vert_out_scal_path = scaling_factor_dir / "climatology" / "anomaly_variance_vertical.nc"
+    get_prithvi_wxc_scaling_factors(data_dir)
+    surf_in_scal_path = data_dir / "climatology" / "musigma_surface.nc"
+    vert_in_scal_path = data_dir / "climatology" / "musigma_vertical.nc"
+    surf_out_scal_path = data_dir / "climatology" / "anomaly_variance_surface.nc"
+    vert_out_scal_path = data_dir / "climatology" / "anomaly_variance_vertical.nc"
 
     in_mu, in_sig = input_scalers(
         surface_vars,
@@ -155,7 +182,8 @@ def load_model(
 
     model = PrithviWxC(**args)
 
-    if weights is not None:
+    if load_weights:
+        weights = download_model_weights(config_name, data_dir)
         state_dict = torch.load(weights, weights_only=False)
         if "model_state" in state_dict:
             state_dict = state_dict["model_state"]

@@ -81,13 +81,13 @@ def find_file_url(
     """
     if time is None:
         url = f"{base_url}/1980/"
-        fname = f"MERRA2_\d\d\d\.{product_name}\.00000000.nc4"
+        fname = rf"MERRA2_\d\d\d\.{product_name}\.00000000.nc4"
     else:
         date = time.astype("datetime64[s]").item()
         url = date.strftime(
             f"{base_url}/%Y/%m/"
         )
-        fname = date.strftime(f"MERRA2_\d\d\d\.{product_name}\.%Y%m%d\.nc4")
+        fname = date.strftime(rf"MERRA2_\d\d\d\.{product_name}\.%Y%m%d\.nc4")
     regexp = re.compile(rf'href="({fname})"')
     with requests_cache.CachedSession() as session:
         response = session.get(url)
@@ -182,7 +182,13 @@ def download_merra_file(
     destination = destination / filename
 
     if not force and destination.exists():
-        return destination
+
+        try:
+            data = xr.open_dataset(destination)
+            data.close()
+            return destination
+        except Exception:
+            destination.unlink()
 
     if credentials is None:
         auth = get_credentials()
@@ -474,6 +480,7 @@ def extract_prithvi_wxc_input_data(
     data_pres.to_netcdf(input_data_path / output_file, encoding=encoding, engine="h5netcdf")
 
 
+
 def get_prithvi_wxc_input(
         time: np.datetime64,
         input_time_step: int,
@@ -518,7 +525,7 @@ def get_prithvi_wxc_input(
         all_steps = list(input_times) + list(output_times)
 
         LOGGER.info("Downloading MERRA-2 files.")
-        merra_files = download_merra_files(all_steps, download_dir)
+        merra_files = download_merra_files(all_steps, download_dir / "raw")
 
         days = [time.astype("datetime64[s]").item() for time in all_steps]
         days = list(set([datetime(year=day.year, month=day.month, day=day.day) for day in days]))
@@ -535,6 +542,88 @@ def get_prithvi_wxc_input(
 
     LOGGER.info("Downloading climatology files.")
     get_prithvi_wxc_climatology(
-        output_times,
-        input_data_dir
+        input_times + list(output_times),
+        input_data_dir / "../climatology"
+    )
+
+
+REPO_IDS = {
+    "large": "ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M",
+    "large_rollout": "ibm-nasa-geospatial/Prithvi-WxC-1.0-2300M-rollout"
+}
+
+
+def download_model_config(
+        config_name: str,
+        download_dir: Union[str, Path]
+):
+    """
+    Download config.yml for a given pre-trained model from HuggingFace.
+
+    Args:
+        config_name: The name of the configuration ('large', 'large_rollout')
+        download_dir: The directory to which to download the model config files.
+
+    Return:
+        The path of the downloaded file.
+    """
+    download_dir = Path(download_dir) / config_name
+
+    repo_id = REPO_IDS.get(config_name, None)
+    if repo_id is None:
+        raise ValueError(
+            f"Unknown config name '{config_name}'.",
+        )
+
+    return hf_hub_download(
+        repo_id=repo_id,
+        filename="config.yaml",
+        local_dir=download_dir
+    )
+
+
+WEIGHT_FILE_NAMES = {
+    "large": "prithvi.wxc.2300m.v1.pt",
+    "large_rollout": "prithvi.wxc.rollout.2300m.v1.pt"
+}
+
+
+def download_model_weights(
+        config_name: str,
+        download_dir: Union[str, Path]
+):
+    """
+    Download config.yml for a given pre-trained model from HuggingFace.
+
+    Args:
+        config_name: The name of the configuration ('large', 'large_rollout')
+        download_dir: The directory to which to download the model config files.
+
+    Return:
+        The path of the downloaded file.
+    """
+    download_dir = Path(download_dir)
+
+    if config_name.lower() == "small":
+        weights = download_dir / "weights" / "small" / "prithvi.wxc.rollout.600m.v1.pt"
+        if not weights.exists():
+            raise ValueError(
+                f"Expected the weights for the small model config at {weights} "
+                "but the file doesn't exist."
+            )
+        return weights
+
+    download_dir = Path(download_dir) / config_name
+
+    repo_id = REPO_IDS.get(config_name, None)
+    if repo_id is None:
+        raise ValueError(
+            f"Unknown config name '{repo_id}'.",
+        )
+
+    filename = WEIGHT_FILE_NAMES.get(config_name, None)
+    return hf_hub_download(
+        repo_id=repo_id,
+        filename=filename,
+        local_dir=download_dir
     )
