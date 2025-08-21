@@ -2,9 +2,10 @@
 
 __version__ = "1.0.0"
 
-from . import dataloaders, model
+from . import dataloaders, model, download
 
 __all__ = [
     "dataloaders",
     "model",
+    "download",
 ]
